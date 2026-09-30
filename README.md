@@ -55,8 +55,10 @@ It verifies outsider denial, receipt permissions, approved household reads, crea
 
 ## Domain
 
-Vercel project: `expenses`. Cloudflare zone: `arbibe.dev`. Add a **DNS-only** A record named `expenses` pointing to `76.76.21.21`, then verify the custom domain in Vercel. Keep Cloudflare authoritative for DNS; no nameserver change is needed.
+Vercel project: `expenses`. Cloudflare zone: `arbibe.dev`. Add a **DNS-only** CNAME record named `expenses` pointing to `a463b1d09644255f.vercel-dns-017.com`, then verify the custom domain in Vercel. An A record to `76.76.21.21` is also accepted by Vercel. Keep Cloudflare authoritative for DNS; no nameserver change is needed.
 
 ## Reference content
 
 Official links, short Hebrew explanations, and verification date live in `src/lib/renovation-guide.ts` and `src/components/guide.tsx`. The property's actual contract, parcel, plans and payment demands determine applicable charges. Review sources when policies change.
+
+Production smoke tests verified email-link session creation, blocked public signup, Hebrew authenticated dashboard rendering, private PDF upload/signed download, anonymous receipt denial, and live access revocation. Temporary test users, memberships, expenses and files were removed.
