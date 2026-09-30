@@ -1,0 +1,7 @@
+project_id = "expenses"
+[auth]
+site_url = "https://expenses.arbibe.dev"
+additional_redirect_urls = ["https://expenses.arbibe.dev/auth/callback", "https://expenses.arbibe.dev/auth/confirm"]
+enable_signup = false
+[auth.email]
+enable_signup = false
