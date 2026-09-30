@@ -4,4 +4,5 @@ site_url = "https://expenses.arbibe.dev"
 additional_redirect_urls = ["https://expenses.arbibe.dev/auth/callback", "https://expenses.arbibe.dev/auth/confirm"]
 enable_signup = false
 [auth.email]
-enable_signup = false
+# Enable email authentication; top-level auth.enable_signup=false blocks registration.
+enable_signup = true
