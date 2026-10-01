@@ -610,14 +610,14 @@ export default async function Home({
           </section>
         )}
         {section === "guide" && <RenovationGuide />}
-        {section === "account" && <>
+        {section === "account" && <div className="account-content">
           <div className="route-heading account-heading">
             <p className="eyebrow">החשבון שלי · משק 48</p>
             <h1>כניסה מאובטחת<span>.</span></h1>
             <p className="muted">הוסיפו Passkey כדי להיכנס עם Face ID או Touch ID. קישור האימייל ימשיך להיות זמין כגיבוי.</p>
           </div>
           <PasskeyManager />
-        </>}
+        </div>}
         <footer className="dashboard-footer">
           <Sprout size={16} />
           משק 48 · בית חנניה

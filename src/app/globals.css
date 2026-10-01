@@ -506,7 +506,9 @@ textarea {
 .passkey-list li > span > svg { color: var(--accent-strong); }
 .passkey-list strong { font-size: 13px; font-weight: 500; }
 .passkey-list small { color: var(--muted); font-size: 11px; }
-.account-heading { max-width: 680px; }
+.account-content { width: min(100%, 720px); margin-inline: auto; }
+.account-heading { max-width: none; }
+.account-content .passkey-card { width: 100%; max-width: none; }
 .login-note {
   display: flex;
   gap: 11px;
@@ -1636,6 +1638,7 @@ tbody tr:hover {
     gap: 14px;
     padding: 20px 17px;
   }
+  .account-content .account-heading { padding-block: 30px 14px; }
   .passkey-card > .section-icon {
     display: grid;
     grid-row: auto;
