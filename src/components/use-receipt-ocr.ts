@@ -68,12 +68,19 @@ export function useReceiptOcr() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
   const [fields, setFields] = useState<ReceiptFields | null>(null);
-  const scan = useCallback(async (file: File) => {
+  const scan = useCallback(async (input: File | File[]) => {
     setProcessing(true); setProgress(0); setError(""); setFields(null);
     let worker: Worker | undefined;
     try {
-      const images = file.type === "application/pdf" ? await pdfPages(file) : [file];
+      const files = Array.isArray(input) ? input : [input];
+      const images = (await Promise.all(files.map((file) =>
+        file.type === "application/pdf" ? pdfPages(file) : [file],
+      ))).flat();
       worker = await createWorker(["heb", "eng"], 1, {
+        workerPath: "/tesseract/worker.min.js",
+        corePath: "/tesseract/tesseract-core-simd-lstm.wasm.js",
+        langPath: "/tesseract/lang",
+        workerBlobURL: false,
         logger: (message) => { if (message.status === "recognizing text") setProgress(Math.round(message.progress * 100)); },
       });
       let text = "";

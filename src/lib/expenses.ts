@@ -69,6 +69,7 @@ export type Expense = {
   reference: string;
   stage: keyof typeof stages;
 };
+export type ExpenseReceipt = { id: string; expense_id: string; path: string };
 export function money(amount: number, currency: string) {
   return new Intl.NumberFormat("he-IL", { style: "currency", currency }).format(
     amount,

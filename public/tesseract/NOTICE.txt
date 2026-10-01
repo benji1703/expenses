@@ -1,0 +1,4 @@
+OCR runtime: Tesseract.js 6.0.1, MIT License.
+Language data: @tesseract.js-data/heb and @tesseract.js-data/eng, MIT License.
+Source: https://github.com/naptha/tesseract.js and https://github.com/naptha/tessdata
+See LICENSE-tesseract.js.md for the Tesseract.js license text.

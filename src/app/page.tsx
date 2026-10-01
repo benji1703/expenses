@@ -29,7 +29,7 @@ import {
   MemberAccess,
 } from "@/components/forms";
 import { logout } from "./actions";
-import { money, type Category, type Expense } from "@/lib/expenses";
+import { money, type Category, type Expense, type ExpenseReceipt } from "@/lib/expenses";
 export const dynamic = "force-dynamic";
 export default async function Home({
   searchParams,
@@ -100,6 +100,14 @@ export default async function Home({
     }),
   );
   const expenses = (expensesResult.data ?? []) as Expense[];
+  const expenseIds = expenses.map((expense) => expense.id);
+  const receiptResult = expenseIds.length
+    ? await supabase.from("expense_receipts").select("id,expense_id,path").in("expense_id", expenseIds)
+    : { data: [] as ExpenseReceipt[] };
+  const receiptsByExpense = new Map<string, ExpenseReceipt[]>();
+  for (const receipt of (receiptResult.data ?? []) as ExpenseReceipt[]) {
+    receiptsByExpense.set(receipt.expense_id, [...(receiptsByExpense.get(receipt.expense_id) ?? []), receipt]);
+  }
   const summary = (summaryResult.data ?? []) as {
     currency: string;
     category_id: string;
@@ -471,16 +479,19 @@ export default async function Home({
                         )}
                       </td>
                       <td>
-                        {e.receipt_path ? (
-                          <a
-                            className="receipt-link"
-                            href={`/receipts/${e.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            <Paperclip size={14} />
-                            הצגה
-                            <ArrowUpRight size={13} />
+                        {(receiptsByExpense.get(e.id)?.length ?? 0) > 0 ? (
+                          <div className="stack" style={{ gap: 4 }}>
+                            {receiptsByExpense.get(e.id)!.map((receipt, index) => (
+                              <a className="receipt-link" key={receipt.id} href={`/receipts/${e.id}/${receipt.id}`} target="_blank" rel="noopener noreferrer">
+                                <Paperclip size={14} />
+                                {`קובץ ${index + 1}`}
+                                <ArrowUpRight size={13} />
+                              </a>
+                            ))}
+                          </div>
+                        ) : e.receipt_path ? (
+                          <a className="receipt-link" href={`/receipts/${e.id}`} target="_blank" rel="noopener noreferrer">
+                            <Paperclip size={14} /> הצגה <ArrowUpRight size={13} />
                           </a>
                         ) : (
                           <span className="muted">—</span>

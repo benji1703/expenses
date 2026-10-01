@@ -32,7 +32,7 @@ Do **not** create or commit environment files. For local development, use extern
 
 ## Database
 
-Apply migrations in `supabase/migrations/` in order; fresh projects must apply all four. `supabase/config.toml` stores non-secret auth configuration and keeps public signup disabled. Auth invitation records must also exist in Supabase Auth; adding an allowlist email alone does not create a user.
+Apply migrations in `supabase/migrations/` in order; fresh projects must apply all five. `supabase/config.toml` stores non-secret auth configuration and keeps public signup disabled. Auth invitation records must also exist in Supabase Auth; adding an allowlist email alone does not create a user.
 
 The hosted project was provisioned via the Management API (`supabase db query --linked --project-ref … --file …`). Migration history is registered separately so future `supabase db push` does not reapply them. Regenerate `src/lib/database.types.ts` after database changes.
 

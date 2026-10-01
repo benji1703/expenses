@@ -137,6 +137,12 @@ export type Database = {
           },
         ];
       };
+      expense_receipts: {
+        Row: { created_at: string; created_by: string; expense_id: string; id: string; path: string };
+        Insert: { created_at?: string; created_by: string; expense_id: string; id?: string; path: string };
+        Update: { created_at?: string; created_by?: string; expense_id?: string; id?: string; path?: string };
+        Relationships: [];
+      };
       members: {
         Row: {
           active: boolean;

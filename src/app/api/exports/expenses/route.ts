@@ -136,6 +136,16 @@ export async function GET(request: Request) {
   }
   const { data: categories, error: categoryError } = await supabase.from("categories").select("id,name");
   if (categoryError) return Response.json({ error: "לא ניתן לטעון את הקטגוריות." }, { status: 500 });
+  const expenseIds = allExpenses.map((expense) => expense.id);
+  const attachedExpenseIds = new Set<string>();
+  for (let start = 0; start < expenseIds.length; start += 150) {
+    const { data: receipts, error: receiptsError } = await supabase
+      .from("expense_receipts")
+      .select("expense_id")
+      .in("expense_id", expenseIds.slice(start, start + 150));
+    if (receiptsError) return Response.json({ error: "לא ניתן לטעון את הקבצים המצורפים." }, { status: 500 });
+    receipts?.forEach((receipt) => attachedExpenseIds.add(receipt.expense_id));
+  }
   const names = new Map((categories as Pick<Category, "id" | "name">[]).map((category) => [category.id, category.name]));
   const rows = allExpenses.map((expense) => ({
     id: expense.id,
@@ -152,7 +162,7 @@ export async function GET(request: Request) {
     stage: stages[expense.stage as keyof typeof stages] ?? expense.stage,
     reference: expense.reference,
     notes: expense.notes,
-    receipt_attached: Boolean(expense.receipt_path),
+    receipt_attached: Boolean(expense.receipt_path || attachedExpenseIds.has(expense.id)),
     created_at: expense.created_at,
     updated_at: expense.updated_at,
   }));

@@ -98,6 +98,19 @@ export async function saveExpense(
   if (existingId && !z.uuid().safeParse(existingId).success)
     return { error: "הוצאה לא תקינה." };
   const id = existingId || crypto.randomUUID();
+  const files = form.getAll("receipts").filter((file): file is File => file instanceof File && file.size > 0);
+  if (files.length > 10) return { error: "אפשר לצרף עד 10 קבצים להוצאה." };
+  if (files.some((file) => file.size > 10 * 1024 * 1024))
+    return { error: "כל קובץ חייב להיות בגודל של עד 10 MB." };
+  if (files.reduce((total, file) => total + file.size, 0) > 10 * 1024 * 1024)
+    return { error: "הגודל הכולל של הקבצים המצורפים מוגבל ל־10 MB." };
+  const validatedFiles: { bytes: Uint8Array; extension: "pdf" | "jpg" | "png"; type: string }[] = [];
+  for (const file of files) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const extension = receiptExtension(bytes, file.type);
+    if (!extension) return { error: "אחד הקבצים אינו PDF, JPG או PNG תקין." };
+    validatedFiles.push({ bytes, extension, type: file.type });
+  }
   const { data: category } = await supabase
     .from("categories")
     .select("id")
@@ -112,32 +125,48 @@ export async function saveExpense(
       .single();
     if (!data || (data.created_by !== user.id && member.role !== "admin"))
       return { error: "אין לכם הרשאה לערוך את ההוצאה." };
-    const { error } = await supabase
-      .from("expenses")
-      .update(expense)
-      .eq("id", id);
-    if (error) return { error: "לא ניתן לעדכן את ההוצאה. נסו שוב." };
-  } else {
-    const file = form.get("receipt");
-    let path: string | null = null;
-    if (file instanceof File && file.size) {
-      if (file.size > 10 * 1024 * 1024)
-        return { error: "המסמך חייב להיות בגודל של עד 10 MB." };
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const extension = receiptExtension(bytes, file.type);
-      if (!extension) return { error: "בחרו מסמך PDF, JPG או PNG תקין." };
-      path = `${user.id}/${id}.${extension}`;
-      const { error } = await supabase.storage
-        .from("receipts")
-        .upload(path, bytes, { contentType: file.type, upsert: false });
-      if (error) return { error: "העלאת המסמך נכשלה. נסו שוב." };
+  }
+  const uploaded: string[] = [];
+  const attachments: { id: string; expense_id: string; path: string; created_by: string }[] = [];
+  for (const { bytes, extension, type } of validatedFiles) {
+    const attachmentId = crypto.randomUUID();
+    const path = `${user.id}/${id}/${attachmentId}.${extension}`;
+    const { error: uploadError } = await supabase.storage
+      .from("receipts")
+      .upload(path, bytes, { contentType: type, upsert: false });
+    if (uploadError) {
+      console.error("Receipt upload failed.", uploadError.message);
+      if (uploaded.length) await supabase.storage.from("receipts").remove(uploaded);
+      return { error: "העלאת אחד הקבצים נכשלה. בדקו את החיבור ונסו שוב." };
     }
+    uploaded.push(path);
+    attachments.push({ id: attachmentId, expense_id: id, path, created_by: user.id });
+  }
+  if (!existingId) {
     const { error } = await supabase
       .from("expenses")
-      .insert({ ...expense, id, created_by: user.id, receipt_path: path });
+      .insert({ ...expense, id, created_by: user.id, receipt_path: null });
     if (error) {
-      if (path) await supabase.storage.from("receipts").remove([path]);
+      if (uploaded.length) await supabase.storage.from("receipts").remove(uploaded);
       return { error: "שמירת ההוצאה נכשלה. נסו שוב." };
+    }
+  }
+  if (attachments.length) {
+    const { error: linkError } = await supabase.from("expense_receipts").insert(attachments);
+    if (linkError) {
+      console.error("Receipt link failed.", linkError.message);
+      await supabase.storage.from("receipts").remove(uploaded);
+      if (!existingId) await supabase.from("expenses").delete().eq("id", id);
+      return { error: "שמירת קובץ ההוצאה נכשלה. נסו שוב." };
+    }
+  }
+  if (existingId) {
+    const { error } = await supabase.from("expenses").update(expense).eq("id", id);
+    if (error) {
+      if (attachments.length)
+        await supabase.from("expense_receipts").delete().in("id", attachments.map((attachment) => attachment.id));
+      if (uploaded.length) await supabase.storage.from("receipts").remove(uploaded);
+      return { error: "לא ניתן לעדכן את ההוצאה. נסו שוב." };
     }
   }
   revalidatePath("/");
@@ -159,11 +188,15 @@ export async function deleteExpense(
     .single();
   if (!data || (data.created_by !== user.id && member.role !== "admin"))
     return { error: "אין לכם הרשאה למחוק את ההוצאה." };
+  const { data: receipts } = await supabase
+    .from("expense_receipts")
+    .select("path")
+    .eq("expense_id", id);
   // Remove the database row first: failed deletion must never lose a linked receipt.
   const { error } = await supabase.from("expenses").delete().eq("id", id);
   if (error) return { error: "לא ניתן למחוק את ההוצאה." };
-  if (data.receipt_path)
-    await supabase.storage.from("receipts").remove([data.receipt_path]);
+  const paths = [...(receipts ?? []).map((receipt) => receipt.path), ...(data.receipt_path ? [data.receipt_path] : [])];
+  if (paths.length) await supabase.storage.from("receipts").remove(paths);
   revalidatePath("/");
   return { success: "ההוצאה נמחקה." };
 }

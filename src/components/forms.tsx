@@ -94,12 +94,13 @@ export function ExpenseForm({
 }) {
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState(saveExpense, initial);
-  const [file, setFile] = useState("");
+  const [files, setFiles] = useState<string[]>([]);
   const { scan, processing: scanning, progress, error: ocrError, fields: ocrFields } = useReceiptOcr();
   const merchantRef = useRef<HTMLInputElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
   const dateRef = useRef<HTMLInputElement>(null);
   const notesRef = useRef<HTMLTextAreaElement>(null);
+  const filesRef = useRef<HTMLInputElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     if (state.success) {
@@ -130,7 +131,7 @@ export function ExpenseForm({
         className="expense-dialog"
         onClose={() => {
           setOpen(false);
-          setFile("");
+          setFiles([]);
         }}
         onClick={(e) => {
           if (e.target === dialog.current) dialog.current.close();
@@ -225,32 +226,31 @@ export function ExpenseForm({
                   </select>
                 </label>
               </div>
-              {!expense && (
-                <>
+              <>
                 <label className="upload">
                   <UploadCloud size={27} />
-                  <strong>
-                    {file || "צירוף חשבונית, קבלה או דרישת תשלום"}
-                  </strong>
-                  <span>PDF, JPG או PNG · עד 10 MB · לא חובה</span>
+                  <strong>{files.length ? files.join(" · ") : "צירוף חשבוניות, קבלות או דרישות תשלום"}</strong>
+                  <span>אפשר לבחור כמה קבצים · PDF, JPG או PNG · עד 10 MB בסך הכול</span>
                   <input
-                    name="receipt"
+                    ref={filesRef}
+                    name="receipts"
                     type="file"
                     accept="application/pdf,image/jpeg,image/png"
-                    onChange={(e) => setFile(e.target.files?.[0]?.name ?? "")}
+                    multiple
+                    onChange={(e) => setFiles(Array.from(e.target.files ?? []).map((item) => item.name))}
                   />
                 </label>
-                {file && (
+                {files.length > 0 && (
                   <div className="ocr-controls">
                     <button
                       type="button"
                       className="secondary"
                       disabled={scanning || pending}
                       onClick={async () => {
-                        const receipt = document.querySelector<HTMLInputElement>('input[name="receipt"]')?.files?.[0];
-                        if (!receipt) return;
+                        const receipts = Array.from(filesRef.current?.files ?? []);
+                        if (!receipts.length) return;
                         try {
-                          const extracted = await scan(receipt);
+                          const extracted = await scan(receipts);
                           if (merchantRef.current && extracted.merchant) merchantRef.current.value = extracted.merchant;
                           if (amountRef.current && extracted.amount) amountRef.current.value = extracted.amount;
                           if (dateRef.current && extracted.spent_on) dateRef.current.value = extracted.spent_on;
@@ -266,8 +266,7 @@ export function ExpenseForm({
                     {ocrFields && <p className="message success" role="status">הפרטים זוהו. בדקו אותם לפני השמירה.</p>}
                   </div>
                 )}
-                </>
-              )}
+              </>
               <div className="form-grid">
                 <label>
                   סטטוס תשלום
