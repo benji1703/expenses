@@ -1,4 +1,6 @@
 import { BrandMark } from "@/components/brand-mark";
+import { CategoryManager } from "@/components/category-manager";
+import { ExportPanel } from "@/components/export-panel";
 import { categoryColor } from "@/lib/design";
 import { RenovationGuide } from "@/components/guide";
 import { stages, paymentStatuses } from "@/lib/renovation-guide";
@@ -90,7 +92,12 @@ export default async function Home({
         : Promise.resolve({ data: [] }),
     ]);
   const categories: Category[] = (categoryResult.data ?? []).map(
-    (category) => ({ ...category, color: categoryColor(category.name) }),
+    (category) => ({
+      ...category,
+      color: /^#[\da-f]{6}$/i.test(category.color)
+        ? category.color
+        : categoryColor(category.name),
+    }),
   );
   const expenses = (expensesResult.data ?? []) as Expense[];
   const summary = (summaryResult.data ?? []) as {
@@ -145,6 +152,7 @@ export default async function Home({
     `${section === "category" ? `/categories/${categoryId}` : "/expenses"}?${new URLSearchParams({ month, category: categoryId, q: search, page: String(p) })}`;
   const failed =
     categoryResult.error || expensesResult.error || summaryResult.error;
+  const canWrite = member.role !== "read_only";
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">
@@ -203,7 +211,11 @@ export default async function Home({
             <div>
               <strong>{member.email.split("@")[0]}</strong>
               <small>
-                {member.role === "admin" ? "מנהל הפרויקט" : "חבר בפרויקט"}
+                {member.role === "admin"
+                  ? "מנהל הפרויקט"
+                  : member.role === "read_only"
+                    ? "צפייה בלבד"
+                    : "צפייה ועריכה"}
               </small>
             </div>
             <form action={logout}>
@@ -230,18 +242,9 @@ export default async function Home({
               מעקב אחר תשלומי רמ״י, תכנון, רישוי, קבלנים וחומרי בנייה.
             </p>
           </div>
-          <ExpenseForm categories={categories} />
+          {canWrite && <ExpenseForm categories={categories} />}
         </section>}
-        {section === "categories" && <section className="category-directory" aria-label="קטגוריות הוצאות">
-          {categories.map((c) => {
-            const item = categoryTotals.find((entry) => entry.id === c.id);
-            return <Link key={c.id} href={`/categories/${c.id}`} className="category-card">
-              <span className="legend-dot" style={{ background: c.color }} />
-              <span><strong>{c.name}</strong><small>{item ? money(item.total, totals.has("ILS") ? "ILS" : (totals.keys().next().value ?? "ILS")) : "עוד אין הוצאות"}</small></span>
-              <ArrowUpRight size={17} />
-            </Link>;
-          })}
-        </section>}
+        {section === "categories" && <CategoryManager categories={categories} canManage={member.role === "admin"} />}
         {section !== "guide" && section !== "categories" && section !== "household" && <>
         {section !== "overview" && section !== "category" && <div className="route-heading"><p className="eyebrow">פרויקט השיפוץ · בית חנניה</p><h1>{section === "expenses" ? <>הוצאות ותשלומים<span>.</span></> : null}</h1><p className="muted">כל הדרישות, הקבלות והאומדנים במקום אחד.</p></div>}
         {section === "category" && <div className="route-heading"><p className="eyebrow"><Link href="/categories">קטגוריות</Link> · קטגוריה</p><h1>{categoryMap.get(categoryId)?.name ?? "הוצאות"}<span>.</span></h1><p className="muted">הוצאות, תשלומים ואסמכתאות בתחום זה.</p></div>}
@@ -377,6 +380,7 @@ export default async function Home({
               {expensesResult.count ?? 0} הוצאות
             </span>
           </div>
+          <ExportPanel categories={categories} />
           <form className="filters">
             <div className="search-input">
               <Search size={17} />
@@ -486,7 +490,7 @@ export default async function Home({
                         {money(Number(e.amount), e.currency)}
                       </td>
                       <td>
-                        {(e.created_by === user.id ||
+                        {canWrite && (e.created_by === user.id ||
                           member.role === "admin") && (
                           <div className="row-actions">
                             <ExpenseForm categories={categories} expense={e} />
@@ -515,7 +519,7 @@ export default async function Home({
                   ? "נסו חיפוש או קטגוריה אחרים."
                   : "הוסיפו דרישת תשלום, חשבונית או אומדן ראשון לנחלה."}
               </p>
-              {!search && !categoryId && (
+              {!search && !categoryId && canWrite && (
                 <ExpenseForm categories={categories} />
               )}
             </div>
@@ -550,7 +554,7 @@ export default async function Home({
           </div>
         </section>}
         </>}
-        {member.role === "admin" && (section === "expenses" || section === "household") && (
+        {member.role === "admin" && section === "household" && (
           <section className="household-section" id="household">
             <div>
               <h2>הפרויקט שלנו, יחד.</h2>
@@ -566,7 +570,11 @@ export default async function Home({
                     <div>
                       <strong>{person.email}</strong>
                       <small>
-                        {person.role === "admin" ? "מנהל" : "חבר"} ·{" "}
+                        {person.role === "admin"
+                          ? "מנהל"
+                          : person.role === "read_only"
+                            ? "צפייה בלבד"
+                            : "צפייה ועריכה"} ·{" "}
                         {person.active ? "גישה פעילה" : "הגישה בוטלה"}
                       </small>
                     </div>
@@ -574,6 +582,7 @@ export default async function Home({
                       <MemberAccess
                         email={person.email}
                         active={person.active}
+                        role={person.role === "read_only" ? "read_only" : "member"}
                       />
                     )}
                   </div>

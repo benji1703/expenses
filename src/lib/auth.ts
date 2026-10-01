@@ -16,6 +16,9 @@ export const requireMember = cache(async () => {
   return {
     supabase,
     user: data.user,
-    member: member as { email: string; role: "admin" | "member" },
+    member: member as {
+      email: string;
+      role: "admin" | "member" | "read_only";
+    },
   };
 });

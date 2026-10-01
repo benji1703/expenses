@@ -10,6 +10,7 @@ import {
   LoaderCircle,
   Pencil,
   Trash2,
+  ScanText,
 } from "lucide-react";
 import {
   login,
@@ -17,9 +18,11 @@ import {
   inviteMember,
   toggleMember,
   deleteExpense,
+  setMemberRole,
   type ActionState,
 } from "@/app/actions";
 import type { Category, Expense } from "@/lib/expenses";
+import { useReceiptOcr } from "@/components/use-receipt-ocr";
 const initial: ActionState = {};
 function Status({ state }: { state: ActionState }) {
   return (
@@ -92,6 +95,11 @@ export function ExpenseForm({
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState(saveExpense, initial);
   const [file, setFile] = useState("");
+  const { scan, processing: scanning, progress, error: ocrError, fields: ocrFields } = useReceiptOcr();
+  const merchantRef = useRef<HTMLInputElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
+  const dateRef = useRef<HTMLInputElement>(null);
+  const notesRef = useRef<HTMLTextAreaElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     if (state.success) {
@@ -132,8 +140,8 @@ export function ExpenseForm({
           <>
             <div className="dialog-header">
               <div>
-                <p className="eyebrow">שיפוץ הנחלה · בית חנניה</p>
-                <h2>{expense ? "עריכת הוצאה" : "הוצאה חדשה לנחלה"}</h2>
+                <p className="eyebrow">משק 48 · בית חנניה</p>
+                <h2>{expense ? "עריכת הוצאה" : "הוצאה חדשה למשק 48"}</h2>
               </div>
               <button
                 className="icon-button"
@@ -149,6 +157,7 @@ export function ExpenseForm({
                 ספק / קבלן / רשות
                 <input
                   name="merchant"
+                  ref={merchantRef}
                   placeholder="למשל: רמ״י, אדריכל או קבלן"
                   defaultValue={expense?.merchant}
                   required
@@ -161,6 +170,7 @@ export function ExpenseForm({
                   סכום
                   <input
                     name="amount"
+                    ref={amountRef}
                     type="number"
                     min="0.01"
                     max="99999999.99"
@@ -188,6 +198,7 @@ export function ExpenseForm({
                   תאריך ההוצאה / הדרישה
                   <input
                     name="spent_on"
+                    ref={dateRef}
                     type="date"
                     required
                     defaultValue={
@@ -215,6 +226,7 @@ export function ExpenseForm({
                 </label>
               </div>
               {!expense && (
+                <>
                 <label className="upload">
                   <UploadCloud size={27} />
                   <strong>
@@ -228,6 +240,33 @@ export function ExpenseForm({
                     onChange={(e) => setFile(e.target.files?.[0]?.name ?? "")}
                   />
                 </label>
+                {file && (
+                  <div className="ocr-controls">
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={scanning || pending}
+                      onClick={async () => {
+                        const receipt = document.querySelector<HTMLInputElement>('input[name="receipt"]')?.files?.[0];
+                        if (!receipt) return;
+                        try {
+                          const extracted = await scan(receipt);
+                          if (merchantRef.current && extracted.merchant) merchantRef.current.value = extracted.merchant;
+                          if (amountRef.current && extracted.amount) amountRef.current.value = extracted.amount;
+                          if (dateRef.current && extracted.spent_on) dateRef.current.value = extracted.spent_on;
+                          if (notesRef.current && extracted.notes) notesRef.current.value = extracted.notes;
+                        } catch { /* The hook exposes an accessible error below. */ }
+                      }}
+                    >
+                      {scanning ? <LoaderCircle className="spin" size={17} /> : <ScanText size={17} />}
+                      {scanning ? `סורקים מסמך… ${progress}%` : "סריקת מסמך ומילוי פרטים"}
+                    </button>
+                    <span className="muted">הסריקה מתבצעת במכשיר. יש לבדוק את הפרטים לפני השמירה.</span>
+                    {ocrError && <p className="message error" role="alert">{ocrError}</p>}
+                    {ocrFields && <p className="message success" role="status">הפרטים זוהו. בדקו אותם לפני השמירה.</p>}
+                  </div>
+                )}
+                </>
               )}
               <div className="form-grid">
                 <label>
@@ -280,6 +319,7 @@ export function ExpenseForm({
                 הערה <span className="muted">(לא חובה)</span>
                 <textarea
                   name="notes"
+                  ref={notesRef}
                   placeholder="פירוט העבודה, השומה או דרישת התשלום…"
                   maxLength={2000}
                   defaultValue={expense?.notes}
@@ -344,6 +384,13 @@ export function InviteForm() {
           required
         />
       </label>
+      <label>
+        הרשאת גישה
+        <select name="role" defaultValue="member">
+          <option value="member">צפייה ועריכת הוצאות</option>
+          <option value="read_only">צפייה בלבד</option>
+        </select>
+      </label>
       <button className="secondary" disabled={pending}>
         {pending ? "שולחים…" : "שליחת הזמנה"}
       </button>
@@ -354,19 +401,41 @@ export function InviteForm() {
 export function MemberAccess({
   email,
   active,
+  role,
 }: {
   email: string;
   active: boolean;
+  role: "member" | "read_only";
 }) {
   const [state, action, pending] = useActionState(toggleMember, initial);
+  const [roleState, roleAction, rolePending] = useActionState(setMemberRole, initial);
   return (
-    <form action={action}>
-      <input type="hidden" name="email" value={email} />
-      <input type="hidden" name="active" value={String(!active)} />
-      <button className="text-button" disabled={pending}>
-        {active ? "ביטול גישה" : "החזרת גישה"}
-      </button>
-      <Status state={state} />
-    </form>
+    <details className="member-controls">
+      <summary>ניהול גישה</summary>
+      <div className="member-control-content">
+        <form action={roleAction} className="member-role-form">
+          <input type="hidden" name="email" value={email} />
+          <label>
+            סוג משתמש
+            <select name="role" defaultValue={role}>
+              <option value="member">צפייה ועריכת הוצאות</option>
+              <option value="read_only">צפייה בלבד</option>
+            </select>
+          </label>
+          <button className="secondary" disabled={rolePending}>
+            {rolePending ? "שומרים…" : "עדכון הרשאה"}
+          </button>
+          <Status state={roleState} />
+        </form>
+        <form action={action}>
+          <input type="hidden" name="email" value={email} />
+          <input type="hidden" name="active" value={String(!active)} />
+          <button className="text-button" disabled={pending}>
+            {active ? "ביטול גישה" : "החזרת גישה"}
+          </button>
+          <Status state={state} />
+        </form>
+      </div>
+    </details>
   );
 }

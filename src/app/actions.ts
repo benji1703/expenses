@@ -41,22 +41,42 @@ export async function login(
       p_window_seconds: 900,
     }),
   ]);
-  if (limits.some((result) => result.error || !result.data)) return generic;
-  const { data: approved } = await admin
+  if (limits.some((result) => result.error)) {
+    console.error("Magic-link rate-limit check failed.");
+    return { error: "שירות הכניסה לא זמין כרגע. נסו שוב בעוד כמה דקות." };
+  }
+  if (limits.some((result) => !result.data))
+    return { error: "נשלחו יותר מדי בקשות כניסה. המתינו 15 דקות ונסו שוב." };
+  const { data: approved, error: approvalError } = await admin
     .from("members")
     .select("email")
     .eq("email", email.data)
     .eq("active", true)
     .maybeSingle();
+  if (approvalError) {
+    console.error("Magic-link member lookup failed.");
+    return { error: "לא ניתן לבדוק את הרשאת הכניסה כרגע. נסו שוב מאוחר יותר." };
+  }
   if (!approved) return generic;
   const supabase = await createClient();
-  await supabase.auth.signInWithOtp({
+  const { error } = await supabase.auth.signInWithOtp({
     email: email.data,
     options: {
       shouldCreateUser: false,
       emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
     },
   });
+  if (error) {
+    console.error("Magic-link send failed.", {
+      code: error.code,
+      status: error.status,
+      message: error.message,
+    });
+    return {
+      error:
+        "לא הצלחנו לשלוח קישור כניסה. בדקו שההזמנה אושרה ונסו שוב; אם הבעיה נמשכת, פנו למנהל הפרויקט.",
+    };
+  }
   return generic;
 }
 export async function logout() {
@@ -69,6 +89,8 @@ export async function saveExpense(
   form: FormData,
 ): Promise<ActionState> {
   const { supabase, user, member } = await requireMember();
+  if (member.role === "read_only")
+    return { error: "למשתמשים עם הרשאת צפייה אין אפשרות לשנות הוצאות." };
   const parsed = expenseSchema.safeParse(Object.fromEntries(form));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const expense = { ...parsed.data, amount: Number(parsed.data.amount) };
@@ -126,6 +148,8 @@ export async function deleteExpense(
   form: FormData,
 ): Promise<ActionState> {
   const { supabase, user, member } = await requireMember();
+  if (member.role === "read_only")
+    return { error: "למשתמשים עם הרשאת צפייה אין אפשרות למחוק הוצאות." };
   const id = String(form.get("id"));
   if (!z.uuid().safeParse(id).success) return { error: "הוצאה לא תקינה." };
   const { data } = await supabase
@@ -155,6 +179,10 @@ export async function inviteMember(
       .toLowerCase(),
   );
   if (!email.success) return { error: "הזינו כתובת אימייל תקינה." };
+  const role = z
+    .enum(["member", "read_only"])
+    .safeParse(String(form.get("role") ?? "member"));
+  if (!role.success) return { error: "בחרו סוג משתמש תקין." };
   const admin = adminClient();
   const { data: existing } = await admin
     .from("members")
@@ -165,7 +193,9 @@ export async function inviteMember(
     return {
       error: "כתובת זו כבר נמצאת בפרויקט. אפשר לנהל את הגישה שלה ברשימה.",
     };
-  const { error } = await admin.from("members").insert({ email: email.data });
+  const { error } = await admin
+    .from("members")
+    .insert({ email: email.data, role: role.data });
   if (error) return { error: "לא ניתן לאשר את כתובת האימייל." };
   const { error: inviteError } = await admin.auth.admin.inviteUserByEmail(
     email.data,
@@ -179,7 +209,9 @@ export async function inviteMember(
     };
   }
   revalidatePath("/");
-  return { success: `הזמנה נשלחה אל ${email.data}.` };
+  return {
+    success: `הזמנה נשלחה אל ${email.data} עם הרשאת ${role.data === "read_only" ? "צפייה בלבד" : "עריכה"}.`,
+  };
 }
 export async function toggleMember(
   _previous: ActionState,
@@ -194,8 +226,75 @@ export async function toggleMember(
     .from("members")
     .update({ active: form.get("active") === "true" })
     .eq("email", email)
-    .eq("role", "member");
+    .in("role", ["member", "read_only"]);
   if (error) return { error: "לא ניתן לשנות את הגישה." };
   revalidatePath("/");
   return { success: "הגישה עודכנה." };
+}
+
+export async function setMemberRole(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const { member } = await requireMember();
+  if (member.role !== "admin") return { error: "נדרשת הרשאת מנהל." };
+  const email = z.email().safeParse(String(form.get("email") ?? "").toLowerCase());
+  const role = z.enum(["member", "read_only"]).safeParse(String(form.get("role") ?? ""));
+  if (!email.success || !role.success)
+    return { error: "כתובת או סוג משתמש אינם תקינים." };
+  if (email.data === member.email)
+    return { error: "לא ניתן לשנות את ההרשאות של עצמכם." };
+  const { data, error } = await adminClient()
+    .from("members")
+    .update({ role: role.data })
+    .eq("email", email.data)
+    .neq("role", "admin")
+    .select("email")
+    .maybeSingle();
+  if (error || !data) return { error: "לא ניתן לעדכן את סוג המשתמש." };
+  revalidatePath("/household");
+  return { success: "סוג המשתמש עודכן." };
+}
+
+export async function saveCategory(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const { member } = await requireMember();
+  if (member.role !== "admin") return { error: "נדרשת הרשאת מנהל." };
+
+  const parsed = z
+    .object({
+      id: z.union([z.uuid(), z.literal("")]),
+      name: z.string().trim().min(1, "הזינו שם לקטגוריה.").max(60, "שם הקטגוריה ארוך מדי."),
+      color: z.string().regex(/^#[\da-fA-F]{6}$/, "בחרו צבע תקין."),
+    })
+    .safeParse({
+      id: String(form.get("id") ?? ""),
+      name: String(form.get("name") ?? ""),
+      color: String(form.get("color") ?? ""),
+    });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const admin = adminClient();
+  const { id, name, color } = parsed.data;
+  const result = id
+    ? await admin
+        .from("categories")
+        .update({ name, color })
+        .eq("id", id)
+        .select("id")
+        .maybeSingle()
+    : await admin.from("categories").insert({ name, color }).select("id").single();
+  if (result.error) {
+    if (result.error.code === "23505")
+      return { error: "כבר קיימת קטגוריה בשם הזה." };
+    return { error: "שמירת הקטגוריה נכשלה. נסו שוב." };
+  }
+  if (!result.data) return { error: "הקטגוריה לא נמצאה." };
+
+  for (const path of ["/", "/categories", "/expenses", "/guide"]) {
+    revalidatePath(path);
+  }
+  return { success: id ? "הקטגוריה עודכנה." : "הקטגוריה נוספה." };
 }

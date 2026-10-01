@@ -7,15 +7,15 @@ A private, shared expense ledger for renovating a **נחלה בבית חנניה
 - Invitation-only Supabase email-link authentication; public signup disabled.
 - Shared project ledger with supplier/authority, amount, currency, category, project stage, payment status, due date, reference number and notes.
 - Separate **paid**, **unpaid** and **estimate** amounts. All-project overview by default, optional month/category/merchant filters and 25-row pagination. Currency amounts are never converted or added across currencies.
-- Private PDF/JPG/PNG attachments, up to 10 MB; server checks file signatures. Receipt links expire after 60 seconds.
-- Project members can view shared expenses; creators and administrators can edit or delete them. Administrators invite members and revoke access.
+- Private PDF/JPG/PNG attachments, up to 10 MB; server checks file signatures. Receipt links expire after 60 seconds. Receipt OCR reads Hebrew and English on-device and fills draft fields for review.
+- Project members can view shared expenses; creators and administrators can edit or delete them. Administrators can invite read-only members, manage access, and export filtered expenses to XLSX, CSV or JSON.
 - Six official-source reference cards plus Beit Hanania/Hof HaCarmel council, committee, fee table and GIS links. Informational content is separate from real expenses and never calculates legal liabilities or inserts sample charges.
 
 ## Stack and security
 
 Next.js App Router, React, TypeScript, Tailwind CSS, Supabase Postgres/Auth/Storage, Vercel hosting, and Cloudflare DNS. Generated Supabase database types provide typed queries; no separate ORM is required. Every product table and private receipt bucket uses row-level security. Server actions validate input and independently check authentication/approval. Only invitation management and pseudonymous sign-in rate limiting use the server-only secret key.
 
-The initial administrator is `benjiar@gmail.com`; `keshet94@gmail.com` is an approved member. Supabase's standard email templates are retained. Its default email service has recipient restrictions and low send limits; invitations were accepted for both initial addresses, but sending to additional addresses may require an SMTP provider. There are no paid email dependencies.
+The initial administrator is `benjiar@gmail.com`; `keshet94@gmail.com` is an approved member. Hosted Supabase Auth uses custom SMTP and Hebrew magic-link/invitation templates. SMTP credentials are stored only in Supabase and are never committed here.
 
 ## Environment variables: Vercel only
 
@@ -32,7 +32,7 @@ Do **not** create or commit environment files. For local development, use extern
 
 ## Database
 
-Apply migrations in `supabase/migrations/` in order; fresh projects must apply all three. `supabase/config.toml` stores non-secret auth configuration and keeps public signup disabled. Auth invitation records must also exist in Supabase Auth; adding an allowlist email alone does not create a user.
+Apply migrations in `supabase/migrations/` in order; fresh projects must apply all four. `supabase/config.toml` stores non-secret auth configuration and keeps public signup disabled. Auth invitation records must also exist in Supabase Auth; adding an allowlist email alone does not create a user.
 
 The hosted project was provisioned via the Management API (`supabase db query --linked --project-ref … --file …`). Migration history is registered separately so future `supabase db push` does not reapply them. Regenerate `src/lib/database.types.ts` after database changes.
 
