@@ -20,6 +20,7 @@ import {
   BookOpen,
   ChevronLeft,
   ChevronRight,
+  Fingerprint,
 } from "lucide-react";
 import { requireMember } from "@/lib/auth";
 import {
@@ -30,6 +31,7 @@ import {
 } from "@/components/forms";
 import { logout } from "./actions";
 import { money, type Category, type Expense, type ExpenseReceipt } from "@/lib/expenses";
+import { PasskeyManager } from "@/components/passkeys";
 export const dynamic = "force-dynamic";
 export default async function Home({
   searchParams,
@@ -37,7 +39,7 @@ export default async function Home({
   category: routeCategory = "",
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
-  section?: "overview" | "expenses" | "guide" | "categories" | "category" | "household";
+  section?: "overview" | "expenses" | "guide" | "categories" | "category" | "household" | "account";
   category?: string;
 }) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) redirect("/login");
@@ -197,6 +199,10 @@ export default async function Home({
               גישה
             </Link>
           )}
+          <Link className={`nav-link ${section === "account" ? "active" : ""}`} href="/account">
+            <Fingerprint size={18} />
+            החשבון שלי
+          </Link>
           <a className="nav-link house-link" href="https://house.arbibe.dev" target="_blank" rel="noopener noreferrer">
             <ArrowUpRight size={18} />
             אתר הבית
@@ -253,7 +259,7 @@ export default async function Home({
           {canWrite && <ExpenseForm categories={categories} />}
         </section>}
         {section === "categories" && <CategoryManager categories={categories} canManage={member.role === "admin"} />}
-        {section !== "guide" && section !== "categories" && section !== "household" && <>
+        {section !== "guide" && section !== "categories" && section !== "household" && section !== "account" && <>
         {section !== "overview" && section !== "category" && <div className="route-heading"><p className="eyebrow">פרויקט השיפוץ · בית חנניה</p><h1>{section === "expenses" ? <>הוצאות ותשלומים<span>.</span></> : null}</h1><p className="muted">כל הדרישות, הקבלות והאומדנים במקום אחד.</p></div>}
         {section === "category" && <div className="route-heading"><p className="eyebrow"><Link href="/categories">קטגוריות</Link> · קטגוריה</p><h1>{categoryMap.get(categoryId)?.name ?? "הוצאות"}<span>.</span></h1><p className="muted">הוצאות, תשלומים ואסמכתאות בתחום זה.</p></div>}
         <div className="period-bar">
@@ -604,6 +610,14 @@ export default async function Home({
           </section>
         )}
         {section === "guide" && <RenovationGuide />}
+        {section === "account" && <>
+          <div className="route-heading account-heading">
+            <p className="eyebrow">החשבון שלי · משק 48</p>
+            <h1>כניסה מאובטחת<span>.</span></h1>
+            <p className="muted">הוסיפו Passkey כדי להיכנס עם Face ID או Touch ID. קישור האימייל ימשיך להיות זמין כגיבוי.</p>
+          </div>
+          <PasskeyManager />
+        </>}
         <footer className="dashboard-footer">
           <Sprout size={16} />
           משק 48 · בית חנניה

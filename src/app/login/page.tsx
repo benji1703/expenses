@@ -41,8 +41,7 @@ export default async function LoginPage({
           </span>
           <h2>כניסה לפרויקט משק 48</h2>
           <p className="muted">
-            היכנסו עם כתובת האימייל שאושרה לפרויקט. נשלח לכם קישור כניסה מאובטח
-            — בלי סיסמה.
+            היכנסו עם Passkey ומכשיר Apple, או בקשו קישור מאובטח לכתובת האימייל שאושרה לפרויקט.
           </p>
           {error && (
             <p className="message error" role="alert">

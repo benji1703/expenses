@@ -2,7 +2,7 @@
 import { stages, paymentStatuses } from "@/lib/renovation-guide";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient as createBrowserSupabaseClient } from "@/lib/supabase/browser";
 import {
   Plus,
   X,
@@ -23,6 +23,7 @@ import {
 } from "@/app/actions";
 import type { Category, Expense } from "@/lib/expenses";
 import { useReceiptOcr } from "@/components/use-receipt-ocr";
+import { PasskeySignIn } from "@/components/passkeys";
 const initial: ActionState = {};
 function Status({ state }: { state: ActionState }) {
   return (
@@ -51,10 +52,7 @@ export function LoginForm() {
     // Supabase's default invitation emails use an implicit callback. Consume it and
     // immediately erase the URL fragment; custom token-hash emails use the server route.
     window.history.replaceState(null, "", "/login");
-    const client = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-    );
+    const client = createBrowserSupabaseClient();
     void client.auth
       .setSession({ access_token, refresh_token })
       .then(({ error }) => {
@@ -82,6 +80,7 @@ export function LoginForm() {
         {pending ? "שולחים קישור…" : "שלחו לי קישור כניסה"}
       </button>
       <Status state={state} />
+      <PasskeySignIn />
     </form>
   );
 }

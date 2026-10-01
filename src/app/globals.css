@@ -460,6 +460,53 @@ textarea {
 .login-card .primary {
   margin-block-start: 4px;
 }
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  margin-block: 2px;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--line);
+}
+.passkey-signin { display: grid; gap: 9px; }
+.passkey-signin .muted { font-size: 12px; text-align: center; }
+.passkey-button { width: 100%; min-height: 48px; }
+.passkey-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 17px;
+  align-items: start;
+  max-width: 720px;
+  padding: 25px;
+  margin-block-start: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.passkey-card > .section-icon { grid-row: span 3; }
+.passkey-card-copy h2 { font-size: 21px; }
+.passkey-card-copy .muted { margin-block-start: 6px; font-size: 13px; }
+.passkey-card > .primary,
+.passkey-card > .muted,
+.passkey-card > .message,
+.passkey-list { grid-column: 2; }
+.passkey-list { display: grid; gap: 8px; padding: 0; margin: 0; list-style: none; }
+.passkey-list li,
+.passkey-list li > span { display: flex; align-items: center; gap: 10px; }
+.passkey-list li { justify-content: space-between; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--control-radius); }
+.passkey-list li > span { flex-wrap: wrap; }
+.passkey-list li > span > svg { color: var(--accent-strong); }
+.passkey-list strong { font-size: 13px; font-weight: 500; }
+.passkey-list small { color: var(--muted); font-size: 11px; }
+.account-heading { max-width: 680px; }
 .login-note {
   display: flex;
   gap: 11px;

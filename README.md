@@ -34,6 +34,8 @@ Do **not** create or commit environment files. For local development, use extern
 
 Apply migrations in `supabase/migrations/` in order; fresh projects must apply all five. `supabase/config.toml` stores non-secret auth configuration and keeps public signup disabled. Auth invitation records must also exist in Supabase Auth; adding an allowlist email alone does not create a user.
 
+Passkey authentication is enabled for `https://expenses.arbibe.dev` with relying party ID `expenses.arbibe.dev`. After signing in with the approved email link once, users can register a Passkey from **My Account**; Apple devices can offer Face ID or Touch ID and iCloud Keychain sync. Keep the relying party ID stable because changing it invalidates registered credentials. Email links remain available as a fallback.
+
 The hosted project was provisioned via the Management API (`supabase db query --linked --project-ref … --file …`). Migration history is registered separately so future `supabase db push` does not reapply them. Regenerate `src/lib/database.types.ts` after database changes.
 
 ## Checks

@@ -3,6 +3,14 @@ project_id = "expenses"
 site_url = "https://expenses.arbibe.dev"
 additional_redirect_urls = ["https://expenses.arbibe.dev/auth/callback", "https://expenses.arbibe.dev/auth/confirm"]
 enable_signup = false
+[auth.passkey]
+enabled = true
+
+[auth.webauthn]
+rp_display_name = "Meshek 48"
+rp_id = "expenses.arbibe.dev"
+rp_origins = ["https://expenses.arbibe.dev"]
+
 [auth.email]
 # Enable email authentication; top-level auth.enable_signup=false blocks registration.
 enable_signup = true
