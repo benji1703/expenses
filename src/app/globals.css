@@ -48,6 +48,9 @@ html {
   scroll-behavior: smooth;
   scroll-padding-block-start: 28px;
   min-height: 100%;
+  /* Safari keeps a non-layout scrollbar gutter outside fixed elements. Match
+     that exposed edge to the sidebar so it does not read as a pale gap. */
+  background: var(--paper);
   /* Keep viewport-level overflow from fixed mobile navigation out of the page scroll area. */
   overflow-x: clip;
 }
