@@ -48,6 +48,8 @@ html {
   scroll-behavior: smooth;
   scroll-padding-block-start: 28px;
   min-height: 100%;
+  /* Keep viewport-level overflow from fixed mobile navigation out of the page scroll area. */
+  overflow-x: clip;
 }
 body {
   margin: 0;
@@ -61,6 +63,7 @@ body {
   font-feature-settings: "kern" on;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  overflow-x: clip;
 }
 button,
 input,
