@@ -541,7 +541,9 @@ textarea {
 .app-shell {
   min-height: 100vh;
   min-height: 100dvh;
-  overflow-x: clip;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 .sidebar {
   width: 242px;
@@ -1471,6 +1473,30 @@ tbody tr:hover {
   }
 }
 @media (max-width: 850px) {
+  .period-bar {
+    min-width: 0;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .period-bar h2,
+  .period-bar form {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .period-bar form {
+    width: 100%;
+  }
+  .period-bar input {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .ledger,
+  .filters,
+  .section-heading {
+    min-width: 0;
+    max-width: 100%;
+  }
   .sidebar {
     position: sticky;
     z-index: 20;
