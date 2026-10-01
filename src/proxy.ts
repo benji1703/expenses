@@ -3,6 +3,9 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
+  // This is a private, authenticated app. Always ask browsers and edge caches
+  // to fetch fresh document/RSC responses after deploys, even if auth is not configured.
+  response.headers.set("Cache-Control", "private, no-store, max-age=0, must-revalidate");
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return response;
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,7 +24,7 @@ export async function proxy(request: NextRequest) {
     },
   );
   await supabase.auth.getClaims();
-  response.headers.set("Cache-Control", "private, no-store");
+  response.headers.set("Cache-Control", "private, no-store, max-age=0, must-revalidate");
   return response;
 }
 export const config = {

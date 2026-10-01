@@ -666,6 +666,8 @@ textarea {
   background: rgba(255, 255, 255, 0.07);
 }
 .dashboard {
+  display: flex;
+  flex-direction: column;
   margin-inline-start: 242px;
   padding-inline: clamp(25px, 4vw, 62px);
   max-width: none;
@@ -1187,6 +1189,7 @@ tbody tr:hover {
   flex-wrap: wrap;
   gap: 9px;
   padding-block: 28px;
+  margin-block-start: auto;
   color: var(--muted);
   font-size: 11px;
 }
