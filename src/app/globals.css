@@ -255,6 +255,20 @@ textarea {
 }
 input:not([type="file"]),
 select { height: 48px; }
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 48px;
+  min-height: 48px;
+  max-height: 48px;
+  padding-block: 0;
+  line-height: normal;
+}
+input[type="date"]::-webkit-date-and-time-value {
+  min-height: 1.4em;
+  margin: 0;
+  text-align: start;
+}
 select {
   appearance: none;
   -webkit-appearance: none;
