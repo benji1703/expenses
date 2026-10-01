@@ -4,18 +4,19 @@ import { redirect } from "next/navigation";
 import { createClient } from "./supabase/server";
 export const requireMember = cache(async () => {
   const supabase = await createClient();
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user?.email) redirect("/login");
+  const { data, error } = await supabase.auth.getClaims();
+  if (error || !data?.claims.sub || typeof data.claims.email !== "string") redirect("/login");
+  const user = { id: data.claims.sub, email: data.claims.email };
   const { data: member } = await supabase
     .from("members")
     .select("email, role")
-    .eq("email", data.user.email.toLowerCase())
+    .eq("email", user.email.toLowerCase())
     .eq("active", true)
     .single();
   if (!member) redirect("/login?error=access");
   return {
     supabase,
-    user: data.user,
+    user,
     member: member as {
       email: string;
       role: "admin" | "member" | "read_only";

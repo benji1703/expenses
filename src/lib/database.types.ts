@@ -141,7 +141,15 @@ export type Database = {
         Row: { created_at: string; created_by: string; expense_id: string; id: string; path: string };
         Insert: { created_at?: string; created_by: string; expense_id: string; id?: string; path: string };
         Update: { created_at?: string; created_by?: string; expense_id?: string; id?: string; path?: string };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "expense_receipts_expense_id_fkey";
+            columns: ["expense_id"];
+            isOneToOne: false;
+            referencedRelation: "expenses";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       members: {
         Row: {

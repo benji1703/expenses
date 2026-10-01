@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { Fingerprint, KeyRound, LoaderCircle, Plus, Trash2 } from "lucide-react";
-import { createClient } from "@/lib/supabase/browser";
 
 type Passkey = { id: string; friendly_name: string | null; created_at: string; last_used_at?: string | null };
 const passkeySupportSubscribe = () => () => {};
@@ -26,6 +25,7 @@ export function PasskeySignIn() {
     setBusy(true);
     setError("");
     try {
+      const { createClient } = await import("@/lib/supabase/browser");
       const { error: authError } = await createClient().auth.signInWithPasskey();
       if (authError) {
         setError(passkeyMessage(authError));
@@ -62,6 +62,7 @@ export function PasskeyManager() {
   const supported = useSyncExternalStore(passkeySupportSubscribe, passkeySupportSnapshot, () => false);
 
   const refresh = useCallback(async () => {
+    const { createClient } = await import("@/lib/supabase/browser");
     const { data, error: listError } = await createClient().auth.passkey.list();
     if (listError) {
       setError(passkeyMessage(listError));
@@ -80,6 +81,7 @@ export function PasskeyManager() {
     setError("");
     setMessage("");
     try {
+      const { createClient } = await import("@/lib/supabase/browser");
       const { error: registerError } = await createClient().auth.registerPasskey();
       if (registerError) {
         setError(passkeyMessage(registerError));
@@ -99,6 +101,7 @@ export function PasskeyManager() {
     setError("");
     setMessage("");
     try {
+      const { createClient } = await import("@/lib/supabase/browser");
       const { error: deleteError } = await createClient().auth.passkey.delete({ passkeyId: passkey.id });
       if (deleteError) {
         setError(passkeyMessage(deleteError));

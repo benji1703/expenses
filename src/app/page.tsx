@@ -1,6 +1,7 @@
 import { BrandMark } from "@/components/brand-mark";
 import { CategoryManager } from "@/components/category-manager";
 import { ExportPanel } from "@/components/export-panel";
+import { ExpenseForm } from "@/components/expense-form";
 import { categoryColor } from "@/lib/design";
 import { RenovationGuide } from "@/components/guide";
 import { stages, paymentStatuses } from "@/lib/renovation-guide";
@@ -24,14 +25,13 @@ import {
 } from "lucide-react";
 import { requireMember } from "@/lib/auth";
 import {
-  ExpenseForm,
   DeleteExpense,
   InviteForm,
   MemberAccess,
 } from "@/components/forms";
 import { logout } from "./actions";
 import { money, type Category, type Expense, type ExpenseReceipt } from "@/lib/expenses";
-import { PasskeyManager } from "@/components/passkeys";
+import { AccountPasskeys } from "@/components/account-passkeys";
 export const dynamic = "force-dynamic";
 export default async function Home({
   searchParams,
@@ -71,9 +71,11 @@ export default async function Home({
         year: "numeric",
       })
     : "הפרויקט כולו";
+  const needsExpenses = section === "expenses" || section === "category";
+  const needsCategories = needsExpenses || section === "overview" || section === "categories";
   let query = supabase
     .from("expenses")
-    .select("*", { count: "exact" })
+    .select("*,expense_receipts(id,expense_id)", { count: "exact" })
     .order("spent_on", { ascending: false })
     .order("created_at", { ascending: false });
   if (month) query = query.gte("spent_on", `${month}-01`).lt("spent_on", end);
@@ -83,13 +85,17 @@ export default async function Home({
     query = query.ilike("merchant", `%${search.replace(/[%_\\]/g, "\\$&")}%`);
   const [categoryResult, expensesResult, summaryResult, membersResult] =
     await Promise.all([
-      supabase.from("categories").select("*").order("name"),
-      query.range((page - 1) * 25, page * 25 - 1),
-      supabase.rpc(
+      needsCategories
+        ? supabase.from("categories").select("*").order("name")
+        : Promise.resolve({ data: [], error: null }),
+      needsExpenses
+        ? query.range((page - 1) * 25, page * 25 - 1)
+        : Promise.resolve({ data: [], count: 0, error: null }),
+      section === "overview" ? supabase.rpc(
         "monthly_summary",
         month ? { month_start: `${month}-01` } : {},
-      ),
-      member.role === "admin"
+      ) : Promise.resolve({ data: [], error: null }),
+      section === "household" && member.role === "admin"
         ? supabase.from("members").select("*").order("created_at")
         : Promise.resolve({ data: [] }),
     ]);
@@ -101,15 +107,11 @@ export default async function Home({
         : categoryColor(category.name),
     }),
   );
-  const expenses = (expensesResult.data ?? []) as Expense[];
-  const expenseIds = expenses.map((expense) => expense.id);
-  const receiptResult = expenseIds.length
-    ? await supabase.from("expense_receipts").select("id,expense_id,path").in("expense_id", expenseIds)
-    : { data: [] as ExpenseReceipt[] };
-  const receiptsByExpense = new Map<string, ExpenseReceipt[]>();
-  for (const receipt of (receiptResult.data ?? []) as ExpenseReceipt[]) {
-    receiptsByExpense.set(receipt.expense_id, [...(receiptsByExpense.get(receipt.expense_id) ?? []), receipt]);
-  }
+  const receiptsByExpense = new Map<string, Pick<ExpenseReceipt, "id" | "expense_id">[]>();
+  const expenses = (expensesResult.data ?? []).map(({ expense_receipts, ...expense }) => {
+    receiptsByExpense.set(expense.id, expense_receipts ?? []);
+    return expense as Expense;
+  });
   const summary = (summaryResult.data ?? []) as {
     currency: string;
     category_id: string;
@@ -616,7 +618,7 @@ export default async function Home({
             <h1>כניסה מאובטחת<span>.</span></h1>
             <p className="muted">הוסיפו Passkey כדי להיכנס עם Face ID או Touch ID. קישור האימייל ימשיך להיות זמין כגיבוי.</p>
           </div>
-          <PasskeyManager />
+          <AccountPasskeys />
         </div>}
         <footer className="dashboard-footer">
           <Sprout size={16} />

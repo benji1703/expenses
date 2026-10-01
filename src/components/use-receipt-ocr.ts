@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { createWorker, type Worker } from "tesseract.js";
+import type { Worker } from "tesseract.js";
 
 export type ReceiptFields = {
   merchant?: string;
@@ -72,6 +72,7 @@ export function useReceiptOcr() {
     setProcessing(true); setProgress(0); setError(""); setFields(null);
     let worker: Worker | undefined;
     try {
+      const { createWorker } = await import("tesseract.js");
       const files = Array.isArray(input) ? input : [input];
       const images = (await Promise.all(files.map((file) =>
         file.type === "application/pdf" ? pdfPages(file) : [file],

@@ -1,6 +1,6 @@
 import { BrandMark } from "@/components/brand-mark";
 import { LockKeyhole } from "lucide-react";
-import { LoginForm } from "@/components/forms";
+import { LoginForm } from "@/components/login-form";
 export default async function LoginPage({
   searchParams,
 }: {
