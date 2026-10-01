@@ -1629,7 +1629,33 @@ tbody tr:hover {
   .profile .icon-button { min-width: 44px; min-height: 44px; }
   .dashboard {
     padding-inline: 16px;
-    padding-block-end: calc(88px + env(safe-area-inset-bottom));
+    padding-block-end: calc(128px + env(safe-area-inset-bottom));
+  }
+  .passkey-card {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+    padding: 20px 17px;
+  }
+  .passkey-card > .section-icon {
+    display: grid;
+    grid-row: auto;
+  }
+  .passkey-card > .primary,
+  .passkey-card > .muted,
+  .passkey-card > .message,
+  .passkey-list {
+    grid-column: 1;
+    min-width: 0;
+  }
+  .passkey-list li {
+    min-width: 0;
+    padding-inline: 9px;
+  }
+  .passkey-list li > span {
+    min-width: 0;
+  }
+  .passkey-list strong {
+    overflow-wrap: anywhere;
   }
   .topbar {
     height: 50px;

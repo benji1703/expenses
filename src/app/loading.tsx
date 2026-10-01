@@ -1,5 +1,5 @@
 import { BrandMark } from "@/components/brand-mark";
-import { BookOpen, LayoutDashboard, ReceiptText, Tags, Users } from "lucide-react";
+import { BookOpen, Fingerprint, LayoutDashboard, ReceiptText, Tags, Users } from "lucide-react";
 
 const navigation = [
   { label: "סקירה", Icon: LayoutDashboard },
@@ -7,6 +7,7 @@ const navigation = [
   { label: "קטגוריות", Icon: Tags },
   { label: "מדריך", Icon: BookOpen },
   { label: "גישה", Icon: Users },
+  { label: "החשבון שלי", Icon: Fingerprint },
 ];
 
 export default function Loading() {
