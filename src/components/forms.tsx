@@ -376,7 +376,7 @@ export function InviteForm() {
   return (
     <form action={action} className="stack">
       <label>
-        הזמנת חבר לפרויקט
+        הזמנה או שליחה מחדש
         <input
           name="email"
           type="email"
@@ -387,13 +387,15 @@ export function InviteForm() {
       <label>
         הרשאת גישה
         <select name="role" defaultValue="member">
+          <option value="admin">מנהל</option>
           <option value="member">צפייה ועריכת הוצאות</option>
           <option value="read_only">צפייה בלבד</option>
         </select>
       </label>
       <button className="secondary" disabled={pending}>
-        {pending ? "שולחים…" : "שליחת הזמנה"}
+        {pending ? "שולחים…" : "שליחת קישור כניסה"}
       </button>
+      <small className="muted">לכתובת שכבר קיימת בפרויקט, ההרשאה תעודכן והקישור יישלח מחדש.</small>
       <Status state={state} />
     </form>
   );
@@ -418,6 +420,7 @@ export function MemberAccess({
           <label>
             סוג משתמש
             <select name="role" defaultValue={role}>
+              <option value="admin">מנהל</option>
               <option value="member">צפייה ועריכת הוצאות</option>
               <option value="read_only">צפייה בלבד</option>
             </select>

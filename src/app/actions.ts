@@ -180,29 +180,56 @@ export async function inviteMember(
   );
   if (!email.success) return { error: "הזינו כתובת אימייל תקינה." };
   const role = z
-    .enum(["member", "read_only"])
+    .enum(["admin", "member", "read_only"])
     .safeParse(String(form.get("role") ?? "member"));
   if (!role.success) return { error: "בחרו סוג משתמש תקין." };
   const admin = adminClient();
-  const { data: existing } = await admin
+  const { data: existing, error: lookupError } = await admin
     .from("members")
-    .select("email")
+    .select("email, role, active")
     .eq("email", email.data)
     .maybeSingle();
-  if (existing)
-    return {
-      error: "כתובת זו כבר נמצאת בפרויקט. אפשר לנהל את הגישה שלה ברשימה.",
-    };
-  const { error } = await admin
+  if (lookupError) return { error: "לא ניתן לבדוק את החברות בפרויקט." };
+  if (email.data === member.email)
+    return { error: "לא ניתן לשלוח הזמנה לעצמכם." };
+
+  const { data: previous, error: saveError } = await admin
     .from("members")
-    .insert({ email: email.data, role: role.data });
-  if (error) return { error: "לא ניתן לאשר את כתובת האימייל." };
-  const { error: inviteError } = await admin.auth.admin.inviteUserByEmail(
-    email.data,
-    { redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/confirm` },
-  );
-  if (inviteError) {
-    await admin.from("members").delete().eq("email", email.data);
+    .upsert({ email: email.data, role: role.data, active: true }, { onConflict: "email" })
+    .select("email")
+    .single();
+  if (saveError || !previous)
+    return { error: "לא ניתן לאשר את כתובת האימייל." };
+
+  const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL}/auth/confirm`;
+  let deliveryError: Error | null = null;
+  const { data: users, error: usersError } = await admin.auth.admin.listUsers({
+    page: 1,
+    perPage: 1000,
+  });
+  if (usersError) deliveryError = usersError;
+  else {
+    const authUser = users.users.find((user) => user.email?.toLowerCase() === email.data);
+    if (authUser?.email_confirmed_at) {
+      const supabase = await createClient();
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email.data,
+        options: { shouldCreateUser: false, emailRedirectTo: redirectTo },
+      });
+      deliveryError = error;
+    } else {
+      const { error } = await admin.auth.admin.inviteUserByEmail(email.data, { redirectTo });
+      deliveryError = error;
+    }
+  }
+
+  if (deliveryError) {
+    if (existing)
+      await admin
+        .from("members")
+        .update({ role: existing.role, active: existing.active })
+        .eq("email", email.data);
+    else await admin.from("members").delete().eq("email", email.data);
     return {
       error:
         "שליחת ההזמנה נכשלה. ייתכן שהגעתם למגבלת השליחה החינמית. נסו מאוחר יותר.",
@@ -210,7 +237,7 @@ export async function inviteMember(
   }
   revalidatePath("/");
   return {
-    success: `הזמנה נשלחה אל ${email.data} עם הרשאת ${role.data === "read_only" ? "צפייה בלבד" : "עריכה"}.`,
+    success: `נשלח קישור כניסה אל ${email.data} עם הרשאת ${role.data === "admin" ? "מנהל" : role.data === "read_only" ? "צפייה בלבד" : "עריכה"}.`,
   };
 }
 export async function toggleMember(
@@ -239,7 +266,7 @@ export async function setMemberRole(
   const { member } = await requireMember();
   if (member.role !== "admin") return { error: "נדרשת הרשאת מנהל." };
   const email = z.email().safeParse(String(form.get("email") ?? "").toLowerCase());
-  const role = z.enum(["member", "read_only"]).safeParse(String(form.get("role") ?? ""));
+  const role = z.enum(["admin", "member", "read_only"]).safeParse(String(form.get("role") ?? ""));
   if (!email.success || !role.success)
     return { error: "כתובת או סוג משתמש אינם תקינים." };
   if (email.data === member.email)
@@ -248,7 +275,7 @@ export async function setMemberRole(
     .from("members")
     .update({ role: role.data })
     .eq("email", email.data)
-    .neq("role", "admin")
+    .neq("email", member.email)
     .select("email")
     .maybeSingle();
   if (error || !data) return { error: "לא ניתן לעדכן את סוג המשתמש." };
