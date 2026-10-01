@@ -15,6 +15,7 @@ import {
   Paperclip,
   Wallet,
   Tags,
+  BookOpen,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -30,11 +31,16 @@ import { money, type Category, type Expense } from "@/lib/expenses";
 export const dynamic = "force-dynamic";
 export default async function Home({
   searchParams,
+  section = "overview",
+  category: routeCategory = "",
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
+  section?: "overview" | "expenses" | "guide" | "categories" | "category" | "household";
+  category?: string;
 }) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) redirect("/login");
   const { supabase, user, member } = await requireMember();
+  if (section === "household" && member.role !== "admin") redirect("/");
   const params = await searchParams;
   const value = (key: string) =>
     typeof params[key] === "string" ? (params[key] as string) : "";
@@ -49,7 +55,7 @@ export default async function Home({
   const end = month
     ? new Date(Date.UTC(year, m, 1)).toISOString().slice(0, 10)
     : "";
-  const categoryId = value("category");
+  const categoryId = routeCategory || value("category");
   const search = value("q").trim().slice(0, 100);
   const page = Math.max(
     1,
@@ -136,7 +142,7 @@ export default async function Home({
     })
     .join(",");
   const pageLink = (p: number) =>
-    `/?${new URLSearchParams({ month, category: categoryId, q: search, page: String(p) })}`;
+    `${section === "category" ? `/categories/${categoryId}` : "/expenses"}?${new URLSearchParams({ month, category: categoryId, q: search, page: String(p) })}`;
   const failed =
     categoryResult.error || expensesResult.error || summaryResult.error;
   return (
@@ -152,25 +158,33 @@ export default async function Home({
           המשק<span className="brand-dot">.</span>
         </Link>
         <p className="sidebar-label">פרויקט השיפוץ</p>
-        <nav>
-          <Link className="nav-link active" href="/">
+        <nav aria-label="ניווט ראשי">
+          <Link className={`nav-link ${section === "overview" ? "active" : ""}`} href="/">
             <LayoutDashboard size={18} />
             סקירה
           </Link>
-          <a className="nav-link" href="#ledger">
+          <Link className={`nav-link ${section === "expenses" ? "active" : ""}`} href="/expenses">
             <ReceiptText size={18} />
-            הוצאות ותשלומים
-          </a>
-          <a className="nav-link" href="#guide">
+            הוצאות
+          </Link>
+          <Link className={`nav-link ${section === "categories" || section === "category" ? "active" : ""}`} href="/categories">
             <Tags size={18} />
-            מדריך לנחלה
-          </a>
+            קטגוריות
+          </Link>
+          <Link className={`nav-link ${section === "guide" ? "active" : ""}`} href="/guide">
+            <BookOpen size={18} />
+            מדריך
+          </Link>
           {member.role === "admin" && (
-            <a className="nav-link" href="#household">
+            <Link className={`nav-link ${section === "household" ? "active" : ""}`} href="/household">
               <Users size={18} />
-              גישה משותפת
-            </a>
+              גישה
+            </Link>
           )}
+          <a className="nav-link house-link" href="https://house.arbibe.dev" target="_blank" rel="noopener noreferrer">
+            <ArrowUpRight size={18} />
+            אתר הבית
+          </a>
         </nav>
         <div className="sidebar-bottom">
           <div className="privacy-note">
@@ -204,27 +218,38 @@ export default async function Home({
       </aside>
       <main className="dashboard" id="main-content" tabIndex={-1}>
         <header className="topbar">
-          <span>בית חנניה · חוף הכרמל</span>
+          <Link href="https://house.arbibe.dev" target="_blank" rel="noopener noreferrer">אתר הבית <ArrowUpRight size={13} /></Link>
           <span className="household-tag">
             <span />
             נחלה · בית חנניה
           </span>
         </header>
-        <section className="page-heading">
+        {(section === "overview" || section === "categories") && <section className="page-heading">
           <div>
             <p className="eyebrow">משפצים את הנחלה</p>
-            <h1>
-              בונים בית. עושים סדר<span>.</span>
-            </h1>
+            <h1>{section === "categories" ? <>הוצאות לפי תחום<span>.</span></> : <>בונים בית. עושים סדר<span>.</span></>}</h1>
             <p className="muted">
               רמ״י, תכנון, רישוי וביצוע — תמונת התקציב של הנחלה שלכם.
             </p>
           </div>
           <ExpenseForm categories={categories} />
-        </section>
+        </section>}
+        {section === "categories" && <section className="category-directory" aria-label="קטגוריות הוצאות">
+          {categories.map((c) => {
+            const item = categoryTotals.find((entry) => entry.id === c.id);
+            return <Link key={c.id} href={`/categories/${c.id}`} className="category-card">
+              <span className="legend-dot" style={{ background: c.color }} />
+              <span><strong>{c.name}</strong><small>{item ? money(item.total, totals.has("ILS") ? "ILS" : (totals.keys().next().value ?? "ILS")) : "עוד אין הוצאות"}</small></span>
+              <ArrowUpRight size={17} />
+            </Link>;
+          })}
+        </section>}
+        {section !== "guide" && section !== "categories" && section !== "household" && <>
+        {section !== "overview" && section !== "category" && <div className="route-heading"><p className="eyebrow">פרויקט השיפוץ · בית חנניה</p><h1>{section === "expenses" ? <>הוצאות ותשלומים<span>.</span></> : null}</h1><p className="muted">כל הדרישות, הקבלות והאומדנים במקום אחד.</p></div>}
+        {section === "category" && <div className="route-heading"><p className="eyebrow"><Link href="/categories">קטגוריות</Link> · קטגוריה</p><h1>{categoryMap.get(categoryId)?.name ?? "הוצאות"}<span>.</span></h1><p className="muted">הוצאות, תשלומים ואסמכתאות בתחום זה.</p></div>}
         <div className="period-bar">
           <h2>
-            סקירה <span>/</span> <span className="muted">{monthLabel}</span>
+            {section === "overview" ? "סקירה" : section === "category" ? categoryMap.get(categoryId)?.name ?? "קטגוריה" : "הוצאות ותשלומים"} <span>/</span> <span className="muted">{monthLabel}</span>
           </h2>
           <form>
             <label className="sr-only" htmlFor="overview-month">
@@ -251,7 +276,7 @@ export default async function Home({
             לא ניתן לטעון את ההוצאות כרגע. נסו לרענן.
           </p>
         )}
-        <section className="stats-grid">
+        {section === "overview" && <section className="stats-grid">
           <article className="stat-card spending-card">
             <div className="stat-label">
               סך העלויות הרשומות
@@ -286,8 +311,8 @@ export default async function Home({
               בש״ח · אומדנים נוספים: {money(planned, "ILS")}
             </span>
           </article>
-        </section>
-        <section className="breakdown">
+        </section>}
+        {section === "overview" && <section className="breakdown">
           <div className="breakdown-copy">
             <span className="section-icon">
               <Tags size={18} />
@@ -304,6 +329,7 @@ export default async function Home({
                 : (totals.keys().next().value ?? "ILS")}{" "}
               · {monthLabel}
             </span>
+            <Link className="text-button breakdown-link" href="/categories">לכל הקטגוריות וההוצאות <ArrowUpRight size={15} /></Link>
           </div>
           <div className="chart-area">
             <div
@@ -322,14 +348,14 @@ export default async function Home({
             <div className="legend">
               {categoryTotals.length ? (
                 categoryTotals.map((c) => (
-                  <div key={c.id}>
+                  <Link key={c.id} href={`/categories/${c.id}`}>
                     <span
                       className="legend-dot"
                       style={{ background: c.color }}
                     />
                     <span>{c.name}</span>
                     <strong>{Math.round((c.total / chartTotal) * 100)}%</strong>
-                  </div>
+                  </Link>
                 ))
               ) : (
                 <p className="muted">
@@ -340,8 +366,8 @@ export default async function Home({
               )}
             </div>
           </div>
-        </section>
-        <section className="ledger" id="ledger">
+        </section>}
+        {(section === "expenses" || section === "category") && <section className="ledger" id="ledger">
           <div className="section-heading">
             <div>
               <h2>יומן ההוצאות של הנחלה</h2>
@@ -522,10 +548,11 @@ export default async function Home({
                 </Link>
               )}
             </div>
-            <span>Small things. ניקוי picture.</span>
+            <span>עודכנו לפי התאריך והסכום.</span>
           </div>
-        </section>
-        {member.role === "admin" && (
+        </section>}
+        </>}
+        {member.role === "admin" && (section === "expenses" || section === "household") && (
           <section className="household-section" id="household">
             <div>
               <h2>הפרויקט שלנו, יחד.</h2>
@@ -558,11 +585,12 @@ export default async function Home({
             <InviteForm />
           </section>
         )}
-        <RenovationGuide />
+        {section === "guide" && <RenovationGuide />}
         <footer className="dashboard-footer">
           <Sprout size={16} />
           בונים בית, שומרים על התמונה.
           <span>נחלה · בית חנניה · גישה למוזמנים בלבד</span>
+          <a href="https://house.arbibe.dev" target="_blank" rel="noopener noreferrer">לפרויקט הבית <ArrowUpRight size={14} /></a>
         </footer>
       </main>
     </div>
