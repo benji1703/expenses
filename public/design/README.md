@@ -1,0 +1,1 @@
+Courtyard reference: copied from `house-remodel/public/references/sourcebook/courtyard.webp` for a shared visual identity. This is an architectural mood reference, not a photograph of the actual property.

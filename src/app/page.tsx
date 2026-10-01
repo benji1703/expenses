@@ -1,3 +1,5 @@
+import { BrandMark } from "@/components/brand-mark";
+import { categoryColor } from "@/lib/design";
 import { RenovationGuide } from "@/components/guide";
 import { stages, paymentStatuses } from "@/lib/renovation-guide";
 import Link from "next/link";
@@ -81,7 +83,9 @@ export default async function Home({
         ? supabase.from("members").select("*").order("created_at")
         : Promise.resolve({ data: [] }),
     ]);
-  const categories = (categoryResult.data ?? []) as Category[];
+  const categories: Category[] = (categoryResult.data ?? []).map(
+    (category) => ({ ...category, color: categoryColor(category.name) }),
+  );
   const expenses = (expensesResult.data ?? []) as Expense[];
   const summary = (summaryResult.data ?? []) as {
     currency: string;
@@ -137,10 +141,13 @@ export default async function Home({
     categoryResult.error || expensesResult.error || summaryResult.error;
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">
+        דילוג לתוכן הפרויקט
+      </a>
       <aside className="sidebar">
         <Link href="/" className="brand">
           <span className="brand-icon">
-            <Sprout size={22} />
+            <BrandMark />
           </span>
           המשק<span className="brand-dot">.</span>
         </Link>
@@ -195,7 +202,7 @@ export default async function Home({
           </div>
         </div>
       </aside>
-      <main className="dashboard">
+      <main className="dashboard" id="main-content" tabIndex={-1}>
         <header className="topbar">
           <span>בית חנניה · חוף הכרמל</span>
           <span className="household-tag">
@@ -304,7 +311,7 @@ export default async function Home({
               style={{
                 background: gradient
                   ? `conic-gradient(${gradient})`
-                  : "#e8ebe6",
+                  : "#e5dccd",
               }}
             >
               <div>

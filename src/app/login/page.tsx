@@ -1,4 +1,5 @@
-import { ArrowUpRight, LockKeyhole, Sprout } from "lucide-react";
+import { BrandMark } from "@/components/brand-mark";
+import { LockKeyhole } from "lucide-react";
 import { LoginForm } from "@/components/forms";
 export default async function LoginPage({
   searchParams,
@@ -11,7 +12,7 @@ export default async function LoginPage({
       <section className="login-story">
         <a href="/login" className="brand">
           <span className="brand-icon">
-            <Sprout size={22} />
+            <BrandMark />
           </span>
           המשק<span className="brand-dot">.</span>
         </a>
@@ -26,27 +27,11 @@ export default async function LoginPage({
             מרמ״י והיתרי הבנייה ועד המטבח והגינה. כל הוצאה, דרישת תשלום ומסמך של
             שיפוץ הנחלה — במקום אחד.
           </p>
-          <div className="sample-receipt">
-            <div>
-              <span className="sample-symbol">₪</span>
-              <span>
-                בונים בית. עושים סדר.
-                <small>זכויות · תכנון · רישוי · ביצוע</small>
-              </span>
-              <ArrowUpRight size={22} />
-            </div>
-            <div className="sample-lines">
-              <span />
-              <span />
-              <span />
-            </div>
-            <div className="sample-foot">
-              כל שלב. כל תשלום. תמונה אחת.
-              <Sprout size={18} />
-            </div>
-          </div>
         </div>
-        <span className="story-footer">פרויקט משותף, גישה למוזמנים בלבד.</span>
+        <div className="story-footer">
+          <span>פרויקט משותף, גישה למוזמנים בלבד.</span>
+          <small>מתוך לוח ההשראה של פרויקט הבית</small>
+        </div>
       </section>
       <section className="login-side">
         <div className="login-card">
