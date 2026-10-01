@@ -6,3 +6,65 @@ enable_signup = false
 [auth.email]
 # Enable email authentication; top-level auth.enable_signup=false blocks registration.
 enable_signup = true
+
+[auth.email.smtp]
+sender_name = "Meshek 48 · Beit Hanania"
+
+[auth.email.template.invite]
+subject = "You're invited to Meshek 48 · Beit Hanania"
+content_path = "./supabase/templates/invite.html"
+
+[auth.email.template.confirmation]
+subject = "Confirm your email · Meshek 48"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.magic_link]
+subject = "Your sign-in link · Meshek 48"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.recovery]
+subject = "Reset your password · Meshek 48"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.email.template.email_change]
+subject = "Confirm your new email · Meshek 48"
+content_path = "./supabase/templates/email_change.html"
+
+[auth.email.template.reauthentication]
+subject = "{{ .Token }} is your verification code · Meshek 48"
+content_path = "./supabase/templates/reauthentication.html"
+
+[auth.email.notification.password_changed]
+enabled = false
+subject = "Password changed · Meshek 48"
+content_path = "./supabase/templates/password_changed_notification.html"
+
+[auth.email.notification.email_changed]
+enabled = false
+subject = "Email address changed · Meshek 48"
+content_path = "./supabase/templates/email_changed_notification.html"
+
+[auth.email.notification.phone_changed]
+enabled = false
+subject = "Phone number changed · Meshek 48"
+content_path = "./supabase/templates/phone_changed_notification.html"
+
+[auth.email.notification.mfa_factor_enrolled]
+enabled = false
+subject = "Verification method added · Meshek 48"
+content_path = "./supabase/templates/mfa_factor_enrolled_notification.html"
+
+[auth.email.notification.mfa_factor_unenrolled]
+enabled = false
+subject = "Verification method removed · Meshek 48"
+content_path = "./supabase/templates/mfa_factor_unenrolled_notification.html"
+
+[auth.email.notification.identity_linked]
+enabled = false
+subject = "Sign-in method connected · Meshek 48"
+content_path = "./supabase/templates/identity_linked_notification.html"
+
+[auth.email.notification.identity_unlinked]
+enabled = false
+subject = "Sign-in method removed · Meshek 48"
+content_path = "./supabase/templates/identity_unlinked_notification.html"
