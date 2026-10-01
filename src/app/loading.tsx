@@ -16,7 +16,7 @@ export default function Loading() {
       <aside className="sidebar loading-sidebar" aria-hidden="true">
         <span className="brand">
           <span className="brand-icon"><BrandMark /></span>
-          המשק<span className="brand-dot">.</span>
+          משק 48
         </span>
         <p className="sidebar-label">פרויקט השיפוץ</p>
         <nav>

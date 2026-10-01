@@ -6,7 +6,7 @@ export function RenovationGuide() {
       <div className="section-heading">
         <div>
           <p className="eyebrow">לדעת לפני שמשלמים</p>
-          <h2>מפת התשלומים של המשק</h2>
+          <h2>מידע ותשלומים לפרויקט</h2>
           <p className="muted">
             רמ״י, הוועדה המקומית, תכנון וביצוע — כל חיוב במקום שלו.
           </p>

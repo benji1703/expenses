@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 export const metadata: Metadata = {
-  title: "המשק · תקציב השיפוץ",
-  description: "ניהול הוצאות שיפוץ המשק בבית חנניה: רמ״י, תכנון, רישוי וביצוע.",
+  title: "משק 48 · ניהול תקציב השיפוץ",
+  description: "מעקב אחר תשלומי רמ״י, תכנון, רישוי, קבלנים ומסמכי השיפוץ בבית חנניה.",
   robots: { index: false, follow: false },
 };
 export const viewport: Viewport = {

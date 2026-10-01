@@ -14,23 +14,23 @@ export default async function LoginPage({
           <span className="brand-icon">
             <BrandMark />
           </span>
-          המשק<span className="brand-dot">.</span>
+          משק 48
         </a>
         <div className="story-copy">
-          <p className="eyebrow">בית חנניה · נחלה בחוף הכרמל</p>
+          <p className="eyebrow">בית חנניה · חוף הכרמל</p>
           <h1>
-            בית חדש.
+            פרויקט השיפוץ
             <br />
-            שורשים עמוקים<span>.</span>
+            משק 48
           </h1>
           <p>
-            מרמ״י והיתרי הבנייה ועד המטבח והגינה. כל הוצאה, דרישת תשלום ומסמך של
-            שיפוץ הנחלה — במקום אחד.
+            מעקב אחר תשלומי רמ״י, תכנון, רישוי, קבלנים וחומרי בנייה. הוצאות,
+            אסמכתאות ומסמכי הפרויקט במקום אחד.
           </p>
         </div>
         <div className="story-footer">
           <span>פרויקט משותף, גישה למוזמנים בלבד.</span>
-          <small>מתוך לוח ההשראה של פרויקט הבית</small>
+          <small>ניהול פרטי למוזמנים בלבד</small>
         </div>
       </section>
       <section className="login-side">
@@ -39,7 +39,7 @@ export default async function LoginPage({
             <LockKeyhole size={13} />
             למוזמנים בלבד
           </span>
-          <h2>ברוכים הבאים הביתה.</h2>
+          <h2>כניסה לפרויקט משק 48</h2>
           <p className="muted">
             היכנסו עם כתובת האימייל שאושרה לפרויקט. נשלח לכם קישור כניסה מאובטח
             — בלי סיסמה.
@@ -61,7 +61,7 @@ export default async function LoginPage({
             </span>
           </div>
         </div>
-        <p className="login-footer">בונים בית, שומרים על התמונה.</p>
+        <p className="login-footer">משק 48 · בית חנניה</p>
       </section>
     </main>
   );

@@ -155,7 +155,7 @@ export default async function Home({
           <span className="brand-icon">
             <BrandMark />
           </span>
-          המשק<span className="brand-dot">.</span>
+          משק 48
         </Link>
         <p className="sidebar-label">פרויקט השיפוץ</p>
         <nav aria-label="ניווט ראשי">
@@ -191,11 +191,9 @@ export default async function Home({
             <span className="small-leaf">
               <Sprout size={20} />
             </span>
-            <strong>בית חדש. שורשים עמוקים.</strong>
+            <strong>מסמכי הפרויקט</strong>
             <p>
-              כל מסמך וכל תשלום,
-              <br />
-              במקום אחד.
+              הוצאות, קבלות ודרישות תשלום.
             </p>
           </div>
           <div className="profile">
@@ -226,10 +224,10 @@ export default async function Home({
         </header>
         {(section === "overview" || section === "categories") && <section className="page-heading">
           <div>
-            <p className="eyebrow">משפצים את הנחלה</p>
-            <h1>{section === "categories" ? <>הוצאות לפי תחום<span>.</span></> : <>בונים בית. עושים סדר<span>.</span></>}</h1>
+            <p className="eyebrow">משק 48 · בית חנניה</p>
+            <h1>{section === "categories" ? <>הוצאות לפי תחום</> : <>תקציב השיפוץ של משק 48</>}</h1>
             <p className="muted">
-              רמ״י, תכנון, רישוי וביצוע — תמונת התקציב של הנחלה שלכם.
+              מעקב אחר תשלומי רמ״י, תכנון, רישוי, קבלנים וחומרי בנייה.
             </p>
           </div>
           <ExpenseForm categories={categories} />
@@ -588,8 +586,8 @@ export default async function Home({
         {section === "guide" && <RenovationGuide />}
         <footer className="dashboard-footer">
           <Sprout size={16} />
-          בונים בית, שומרים על התמונה.
-          <span>נחלה · בית חנניה · גישה למוזמנים בלבד</span>
+          משק 48 · בית חנניה
+          <span>ניהול תקציב, הוצאות ומסמכי השיפוץ · גישה למוזמנים בלבד</span>
           <a href="https://house.arbibe.dev" target="_blank" rel="noopener noreferrer">לפרויקט הבית <ArrowUpRight size={14} /></a>
         </footer>
       </main>
