@@ -1,7 +1,22 @@
 @import "tailwindcss";
 
-/* House Remodel: ivory paper, espresso framing, aged brass and timber.
-   Hebrew uses a local serif fallback; no remote fonts or tracking requests. */
+/* House Remodel palette with locally hosted Heebo for clear Hebrew UI. */
+@font-face {
+  font-family: "Heebo";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("/fonts/heebo-hebrew.woff2") format("woff2");
+  unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F;
+}
+@font-face {
+  font-family: "Heebo";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("/fonts/heebo-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 :root {
   --ink: #27221d;
   --muted: #74685c;
@@ -22,8 +37,8 @@
   --radius: 14px;
   --radius-sm: 12px;
   --control-radius: 10px;
-  --font-sans: "Arial Hebrew", "Noto Sans Hebrew", Arial, "Helvetica Neue", sans-serif;
-  --font-display: "Noto Serif Hebrew", "David", "Times New Roman", Georgia, serif;
+  --font-sans: "Heebo", "Arial Hebrew", "Noto Sans Hebrew", Arial, sans-serif;
+  --font-display: var(--font-sans);
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 * {
@@ -89,8 +104,8 @@ h1,
 h2,
 h3 {
   font-family: var(--font-display);
-  font-weight: 400;
-  letter-spacing: -0.025em;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 h1 {
   font-size: clamp(36px, 4vw, 54px);
@@ -582,6 +597,35 @@ textarea {
 .category-card small { color:var(--muted); font-size:12px; }
 .category-card > svg { margin-inline-start:auto; color:var(--accent-strong); }
 .category-card:hover { border-color:var(--accent); transform:translateY(-1px); }
+.app-loading { min-height:100vh; min-height:100dvh; }
+.loading-sidebar .brand { color:#f4f0e6; }
+.loading-sidebar nav { pointer-events:none; }
+.loading-profile,.loading-line,.loading-cards > span,.loading-panel {
+  display:block;
+  background:linear-gradient(100deg,rgba(118,101,81,.09) 20%,rgba(118,101,81,.17) 38%,rgba(118,101,81,.09) 62%);
+  background-size:300% 100%;
+  animation:loading-shimmer 1.6s ease-in-out infinite;
+}
+.loading-profile { height:44px; border-radius:10px; background-color:rgba(255,255,255,.05); }
+.loading-title { display:flex; flex-direction:column; align-items:flex-start; gap:14px; padding-block:50px 36px; }
+.loading-line { height:14px; border-radius:20px; }
+.loading-caption { width:110px; height:10px; }
+.loading-heading { width:min(390px,75%); height:48px; }
+.loading-copy { width:min(320px,65%); }
+.loading-cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+.loading-cards > span { min-height:150px; border:1px solid var(--line); border-radius:var(--radius); }
+.loading-panel { min-height:220px; margin-block-start:20px; border:1px solid var(--line); border-radius:var(--radius); }
+@keyframes loading-shimmer { to { background-position-x:-150%; } }
+@media(max-width:850px) { .loading-sidebar .sidebar-bottom { display:none; } }
+@media(max-width:600px) {
+  .loading-sidebar { position:sticky; }
+  .loading-title { padding-block:28px 20px; }
+  .loading-heading { height:38px; }
+  .loading-cards { grid-template-columns:1fr; gap:10px; }
+  .loading-cards > span { min-height:110px; }
+  .loading-panel { min-height:170px; }
+}
+@media(prefers-reduced-motion:reduce) { .loading-profile,.loading-line,.loading-cards > span,.loading-panel { animation:none; } }
 .legend > a:hover { color:var(--ink); }
 .breakdown-link { margin-block-start:18px; }
 .eyebrow { font-size:12px; font-weight:600; }
