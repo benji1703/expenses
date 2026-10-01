@@ -543,7 +543,7 @@ textarea {
   min-height: 100dvh;
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 .sidebar {
   width: 242px;
@@ -998,6 +998,9 @@ textarea {
   background: transparent;
 }
 .table-scroll {
+  /* Keep absolutely positioned screen-reader headings inside the scrollport.
+     Otherwise their RTL static position can widen Safari's document viewport. */
+  position: relative;
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -1640,9 +1643,9 @@ tbody tr:hover {
     backdrop-filter: blur(18px);
   }
   .sidebar nav .nav-link {
-    min-width: 58px;
+    min-width: 0;
     min-height: 52px;
-    flex: 1;
+    flex: 1 1 0;
     flex-direction: column;
     justify-content: center;
     gap: 2px;
@@ -1650,7 +1653,8 @@ tbody tr:hover {
     border-radius: 10px;
     font-size: 10px;
     line-height: 1.25;
-    white-space: nowrap;
+    white-space: normal;
+    text-align: center;
   }
   .sidebar nav .nav-link svg {
     display: block;
