@@ -139,9 +139,14 @@ export default function ExpenseFields({ categories, merchants = [], expense, can
             {results.map((item, index) => <option key={index} value={index}>{item.file_name}{item.error ? " · לא זוהה" : ""}</option>)}
           </select><span className="muted">הסכומים אינם מתחברים אוטומטית.</span></label>}
           {selected?.error && <p className="message error" role="alert">{selected.error}</p>}
-          {selected?.fields && <><ReceiptReview fields={selected.fields} onSelectAmount={(amount) => {
+          {selected?.fields && <><ReceiptReview key={`${selectedScan}-${selected.file_name}`} fields={selected.fields} disabled={pending || creatingCategory} onSelectAmount={(amount) => {
             const input = formRef.current?.elements.namedItem("amount");
             if (input instanceof HTMLInputElement) { input.value = amount; edited.current.add("amount"); onDirty?.(); }
+          }} onSelectMerchant={(merchant) => {
+            const input = formRef.current?.elements.namedItem("merchant");
+            if (input instanceof HTMLInputElement) {
+              input.value = merchant; edited.current.add("merchant"); onDirty?.();
+            }
           }} />{expense && <button type="button" className="text-button" disabled={pending} onClick={() => {
             if (confirm("להחליף את פרטי ההוצאה בפרטים שזוהו במסמך?")) applyScan(selected.fields!, true);
           }}>מילוי הפרטים מהמסמך</button>}</>}

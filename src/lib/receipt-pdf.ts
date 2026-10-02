@@ -19,10 +19,17 @@ export async function readReceiptPdf(pdf: PDFDocumentProxy, options: {
       // Embedded amounts are exact; never rasterize a readable digital invoice
       // just because another optional field was missing.
       const fields = extractReceiptFields(text, options.context);
-      const readable = fields.amount || fields.amount_candidates.length || (text.trim().length >= 200 && /[א-תa-z]/i.test(text));
+      // A long text layer can contain notices while the payable total is an
+      // image, or use a broken Hebrew font mapping. Length alone is not proof.
+      const readable = fields.amount || fields.amount_candidates.length || fields.zero_total;
       if (!readable) {
         const recognized = await options.recognize(await options.render(page));
-        if (receiptFieldQuality(extractReceiptFields(recognized, options.context)) > receiptFieldQuality(extractReceiptFields(text, options.context))) text = recognized;
+        if (recognized.trim()) {
+          // Preserve complementary digital metadata when OCR supplies only the
+          // missing total; equal quality scores must not discard that total.
+          text = receiptFieldQuality(extractReceiptFields(recognized, options.context)) > receiptFieldQuality(fields)
+            ? [recognized, text].join("\n") : [text, recognized].join("\n");
+        }
       }
       texts.push(text);
       const combined = extractReceiptFields(texts.join("\n"), options.context);

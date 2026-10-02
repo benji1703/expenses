@@ -36,6 +36,24 @@ test("conflicting embedded totals remain editable candidates without an expensiv
   assert.deepEqual(fixture.read, [1]);
 });
 
+test("long partial text layers still OCR an image-only payable total and retain digital metadata", async () => {
+  const fixture = document([[item('חברת החשמל לישראל בע״מ', 100), item('חשבונית מס / קבלה', 80), item('תאריך: 21/07/2021', 60), item('הודעה לצרכנים '.repeat(30), 40)]]);
+  let renders = 0;
+  const text = await readReceiptPdf(fixture.pdf, { context: { categories: [{ id: "electric", name: "חשמל" }] }, render: async () => { renders++; return new Blob(); }, recognize: async () => 'סה״כ לתשלום (ש״ח) 361.95' });
+  const fields = extractReceiptFields(text, { categories: [{ id: "electric", name: "חשמל" }] });
+  assert.equal(renders, 1);
+  assert.equal(fields.amount, '361.95');
+  assert.equal(fields.merchant, 'חברת החשמל לישראל בע"מ');
+  assert.equal(fields.spent_on, '2021-07-21');
+  assert.equal(fields.category_id, 'electric');
+});
+
+test("zero-value digital bills stay digital without OCR inventing an expense", async () => {
+  const fixture = document([[item('חברת החשמל לישראל בע״מ', 100), item('חשבונית מס', 80), item('סה״כ לתשלום 0.00 ₪', 60)]]);
+  const text = await readReceiptPdf(fixture.pdf, { context: {}, render: async () => assert.fail("zero bill should not render"), recognize: async () => assert.fail("zero bill should not OCR") });
+  assert.equal(extractReceiptFields(text).zero_total, true);
+});
+
 test("OCR spatial rows join detached columns without changing Hebrew or decimal digits", () => {
   const line = (text: string, x: number, y: number) => ({ text, bbox: { x0: x, x1: x + 90, y0: y, y1: y + 20 } });
   const text = receiptOcrText([line('361.95', 40, 150), line('סה״כ לתשלום (ש״ח)', 300, 152), line('חשבונית מס / קבלה', 300, 80), line('חברת החשמל לישראל בע״מ', 300, 40)]);

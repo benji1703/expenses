@@ -19,6 +19,8 @@ export type ReceiptFields = {
   document_type?: keyof typeof documentTypes;
   notes?: string;
   amount_candidates: string[];
+  amount_alternatives?: string[];
+  merchant_candidates?: string[];
   warnings: string[];
   zero_total?: boolean;
 };
@@ -119,7 +121,14 @@ function findAmount(lines: string[]) {
   const best = candidates.filter((item) => item.score === bestScore && (!finalLabel || item.score >= 80));
   const amounts = [...new Set(best.map((item) => item.amount))];
   const zero = amounts.includes("0.00");
-  return { amount: amounts.length === 1 && !zero ? amounts[0] : undefined, currency: amounts.length === 1 && !zero ? best[0]?.currency : undefined, zero, candidates: amounts.length > 1 ? amounts.filter((value) => value !== "0.00") : [] };
+  const selectedCurrency = best[0]?.currency ?? currency(lines.join("\n"));
+  // Offer other labelled totals without weakening the automatic selection rules.
+  // Unlabelled prices, tax bases and values in another currency are not corrections.
+  const alternatives = zero || !best.length ? [] : [...new Set(candidates
+    .filter((item) => item.amount !== "0.00" && item.score >= (bestScore >= 80 ? 80 : bestScore)
+      && (!item.currency || !selectedCurrency || item.currency === selectedCurrency))
+    .sort((a, b) => b.score - a.score).map((item) => item.amount))].slice(0, 6);
+  return { amount: amounts.length === 1 && !zero ? amounts[0] : undefined, currency: amounts.length === 1 && !zero ? best[0]?.currency : undefined, zero, candidates: amounts.length > 1 ? amounts.filter((value) => value !== "0.00") : [], alternatives };
 }
 
 function documentType(text: string): ReceiptFields["document_type"] {
@@ -131,6 +140,7 @@ function documentType(text: string): ReceiptFields["document_type"] {
   if (/דרישת\s*תשלום|חשבונ?ית\s*עסקה|חשבון\s*עסקה|\bpayment\s*request\b|\bpro\s*forma\b/i.test(header)) return "payment_request";
   if (/(?:^|\n)\s*(?:קבלה|receipt)(?:\s|[#:״"\-]|$)/i.test(header)) return "receipt";
   if (/חשבונית(?:\s*מס)?|\binvoice\b|\bfacture\b/i.test(header)) return "invoice";
+  if (/חשבון\s*(?:חשמל|דו\s*חודשי)|\belectricity\s*bill\b/i.test(header)) return "payment_request";
 }
 
 function editDistance(a: string, b: string) {
@@ -144,19 +154,32 @@ function editDistance(a: string, b: string) {
 }
 function merchantName(lines: string[], known: string[]) {
   const explicit = /^(?:שם\s*(?:העסק|הספק)|ספק|מאת|merchant|supplier)\s*[:\-]\s*(.+)$/i;
-  const excluded = /^(?:חשבונית|קבלה|דרישת\s*תשלום|הצעת\s*מחיר|חשבון\s*עסקה|העתק|מקור|תאריך|לכבוד|לקוח|שם\s*הלקוח|כתובת|רחוב|טלפון|נייד|דוא["']?ל|מספר|תיאור|סה["']?כ|סכום|מע["']?מ|מס\s*ערך|מסמך|signature|date|receipt|invoice|bill\s*to|customer|total)/i;
+  const excluded = /^(?:חשבונית|קבלה|דרישת\s*תשלום|הצעת\s*מחיר|חשבון(?:\s|דו|חשמל|עסקה)|עמוד|page\b|העתק|מקור|תאריך|לכבוד|לקוח|שם\s*הלקוח|כתובת|רחוב|טלפון|נייד|דוא["']?ל|מספר|תיאור|סה["']?כ|סכום|מע["']?מ|מס\s*ערך|מסמך|signature|date|receipt|invoice|electricity\s*bill|bill\s*to|customer|total)/i;
   const ranked: { name: string; score: number }[] = [];
+  const alternatives: { name: string; score: number }[] = [];
+  const fullText = lines.join("\n");
+  const electricEvidence = /\biec\.co\.il\b|קוט["']?ש|חשבון\s*חשמל/i.test(fullText);
   for (let index = 0; index < Math.min(lines.length, 12); index++) {
     const line = lines[index];
-    if (/^(?:לכבוד|לקוח|שם\s*הלקוח|bill\s*to|customer)(?:\s|:|$)/i.test(line)) break;
+    // PDF rows can join issuer details with the customer column's label.
+    if (/(?:^|\s)(?:לכבוד|לקוח|שם\s*הלקוח|bill\s*to|customer)(?:\s|:|$)/i.test(line)) break;
     const labelled = line.match(explicit);
-    const name = labelled ? labelled[1].trim() : line;
+    const name = (labelled ? labelled[1].trim() : line).replace(/^(?:[|*•]\s*)+/, "");
     if (name.length < 3 || name.length > 160 || !/[א-תa-z]/i.test(name) || (!labelled && (excluded.test(name) || identifiers.test(name) || nonTotal.test(name) || totalScore(name) || currencyPattern.test(name) || /^\d/.test(name) || /[@]|https?:|www\.|\bsite\s*internet\b|\d{4,}/i.test(name)))) continue;
     let score = labelled ? 100 : 30 - index;
-    if (/בע["']?מ|\bltd\b|\binc\b/i.test(name)) score += 20;
+    const companyName = /בע["']?מ|\bltd\b|\binc\b/i.test(name);
+    if (companyName) score += 20;
     const normalized = words(name);
+    const compactName = normalized.replace(/בעמ$/, "").replace(/\s/g, "");
+    const electricNames = ["חברתהחשמללישראל", "חברתחשמללישראל", "חברתהחשמל", "חברתחשמל"];
+    if (electricNames.includes(compactName) || electricEvidence && electricNames.some((alias) => editDistance(compactName, alias) <= 1)) {
+      const canonical = 'חברת החשמל לישראל בע"מ';
+      ranked.push({ name: canonical, score: score + 50 });
+      alternatives.push({ name: canonical, score: score + 50 }, { name, score });
+      continue;
+    }
     const match = known.find((item) => words(item) === normalized || words(item).replace(/\s/g, "") === normalized.replace(/\s/g, ""));
-    if (match) { ranked.push({ name: match, score: score + 50 }); continue; }
+    if (match) { ranked.push({ name: match, score: score + 50 }); alternatives.push({ name: match, score: score + 50 }); continue; }
     const tokens = normalized.split(" ").filter((token) => token.length > 1 && token !== "בעמ");
     const similar = known.map((item) => {
       const other = words(item).split(" ").filter((token) => token.length > 1 && token !== "בעמ");
@@ -169,11 +192,26 @@ function merchantName(lines: string[], known: string[]) {
       const limit = Math.min(2, Math.floor(Math.max(compact.length, target.length) * 0.15));
       return Math.abs(compact.length - target.length) <= limit && editDistance(compact, target) <= limit;
     }) : [];
+    // Only scanned supplier evidence and close matches are offered, never the
+    // complete supplier directory or unlabelled address/description lines.
+    if (labelled || companyName || fuzzy.length || similar.length) alternatives.push({ name, score });
+    for (const candidate of new Set([...fuzzy, ...similar.map((item) => item.name)])) alternatives.push({ name: candidate, score: score + 35 });
     if (fuzzy.length === 1) ranked.push({ name: fuzzy[0], score: score + 35 });
     else if (similar.length === 1) ranked.push({ name: similar[0].name, score: score + 35 });
     else ranked.push({ name, score });
   }
-  return ranked.sort((a, b) => b.score - a.score)[0]?.name;
+  const logoOnlyElectricBill = /\biec\.co\.il\b/i.test(fullText) && /קוט["']?ש/i.test(fullText) && /מספר\s*(?:חשבון\s*)?חוזה/i.test(fullText);
+  // Older electricity PDFs put the company name exclusively in a logo image.
+  // Require the utility domain, electricity units and contract-account wording
+  // together before filling a supplier absent from the readable header.
+  const merchant = logoOnlyElectricBill && !alternatives.length ? 'חברת החשמל לישראל בע"מ' : ranked.sort((a, b) => b.score - a.score)[0]?.name;
+  const candidates = new Map<string, string>();
+  if (merchant) candidates.set(words(merchant).replace(/\s/g, ""), merchant);
+  for (const { name } of alternatives.sort((a, b) => b.score - a.score)) {
+    const key = words(name).replace(/\s/g, "");
+    if (!candidates.has(key)) candidates.set(key, name);
+  }
+  return { merchant, candidates: [...candidates.values()].slice(0, 6) };
 }
 
 const specificCategoryGroups = [
@@ -255,15 +293,16 @@ export function extractReceiptFields(text: string, context: ReceiptContext = {})
   if (!type) warnings.push("סוג המסמך לא זוהה. בדקו את סטטוס התשלום.");
   const conditionalReceipt = /(?:משמש|תשמש|מהווה).*קבלה.*(?:רק\s*לאחר|לאחר\s*(?:הטבעת|תשלום))|קבלה.*(?:מותנית|לאחר\s*התשלום)/i.test(normalized);
   if (conditionalReceipt) warnings.push("המסמך משמש קבלה רק לאחר תשלום. בדקו אם שולם.");
-  const merchant = merchantName(lines, context.merchants ?? []);
+  const { merchant, candidates: merchantCandidates } = merchantName(lines, context.merchants ?? []);
   if (!merchant) warnings.push("שם הספק לא זוהה. מלאו אותו לפי המסמך.");
   return {
     merchant, amount: amount.amount,
     currency: amount.currency ?? currency(normalized), ...dates(lines), reference,
     document_type: type,
     payment_status: conditionalReceipt && (type === "receipt" || type === "tax_receipt") ? "unpaid" : type === "receipt" || type === "tax_receipt" ? "paid" : type === "payment_request" ? "unpaid" : type === "quote" ? "planned" : undefined,
-    category_id: matchCategory(normalized, context.categories ?? []),
-    amount_candidates: amount.candidates, warnings,
+    category_id: matchCategory([merchant, normalized].filter(Boolean).join("\n"), context.categories ?? []),
+    amount_candidates: amount.candidates, amount_alternatives: amount.alternatives,
+    merchant_candidates: merchantCandidates, warnings,
     ...(amount.zero ? { zero_total: true } : {}),
   };
 }

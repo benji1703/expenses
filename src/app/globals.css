@@ -2014,6 +2014,12 @@ tbody tr:hover {
 .receipt-result, .receipt-check { display:grid; gap:8px; min-width:0; }
 .receipt-check .muted, .receipt-result label > .muted { font-size:12px; }
 .receipt-candidates { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:13px; }
+.receipt-alternatives { min-width:0; font-size:13px; }
+.receipt-alternatives summary { min-height:44px; display:list-item; align-content:center; cursor:pointer; }
+.receipt-alternatives[open] > .receipt-candidates { margin-block:8px; }
+.receipt-candidates > span { flex-basis:100%; }
+.receipt-candidates > button { min-height:44px; max-width:100%; white-space:normal; overflow-wrap:anywhere; }
+.receipt-merchant-candidates > button { text-align:start; }
 .expense-extra-fields > summary, .expense-category-create > summary { cursor:pointer; color:var(--accent-strong); min-height:44px; padding-block:10px; font-size:14px; }
 .expense-extra-fields[open] > summary { margin-block-end:8px; }
 .expense-category-create { margin-block-start:-10px; }

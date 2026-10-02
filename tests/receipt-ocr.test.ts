@@ -159,6 +159,52 @@ test("OCR spacing loss and one-character supplier error match a unique known nam
 test("ambiguous supplier similarity retains the scanned name", () => {
   const fields = extractReceiptFields(`אור חשמנ בע״מ\nקבלה\nסהכ לתשלום 1180`, { merchants: ['אור חשמל בע"מ', 'אור חשמק בע"מ'] });
   assert.equal(fields.merchant, 'אור חשמנ בע"מ');
+  assert.deepEqual(fields.merchant_candidates, ['אור חשמנ בע"מ', 'אור חשמל בע"מ', 'אור חשמק בע"מ']);
+});
+
+test("confident extraction offers other labelled totals without an ambiguity warning", () => {
+  const fields = extractReceiptFields(`שם הספק: אור חשמל בע״מ
+קבלה
+סה״כ לפני מע״מ 1000 ₪
+מע״מ 180 ₪
+סה״כ לתשלום 1180 ₪
+סכום ששולם 600 ₪
+עודף 20 ₪
+מספר כרטיס: 1234
+פריט 250 ₪
+grand total USD 99`);
+  assert.equal(fields.amount, "600.00");
+  assert.deepEqual(fields.amount_candidates, []);
+  assert.deepEqual(fields.amount_alternatives, ["600.00", "1180.00"]);
+  assert.ok(!fields.warnings.some((warning) => warning.includes("כמה סכומים")));
+});
+
+test("supplier alternatives contain scanned names and close matches, never customers or unrelated saved suppliers", () => {
+  const fields = extractReceiptFields(`שם הספק: אור חשמנ בע״מ
+אור חשמנ בע״מ
+רחוב העצמאות 15
+לכבוד: משק 48
+חברת הלקוח בע״מ
+סה״כ לתשלום 100 ₪`, { merchants: ['אור חשמל בע"מ', 'ספק אחר בע"מ', 'חברת הלקוח בע"מ'] });
+  assert.equal(fields.merchant, 'אור חשמל בע"מ');
+  assert.deepEqual(fields.merchant_candidates, ['אור חשמל בע"מ', 'אור חשמנ בע"מ']);
+});
+
+test("exact supplier spellings and repeated totals are deduplicated", () => {
+  const fields = extractReceiptFields(`אור חשמל בע״מ
+אור חשמל בע"מ
+קבלה
+סה״כ לתשלום 100 ₪
+סכום ששולם 100 ₪`, { merchants: ['אור חשמל בע"מ'] });
+  assert.deepEqual(fields.merchant_candidates, ['אור חשמל בע"מ']);
+  assert.deepEqual(fields.amount_alternatives, ["100.00"]);
+});
+
+test("zero, malformed and negative totals never offer unrelated prices as corrections", () => {
+  for (const total of ["0.00", "-361.95", "361.950"]) {
+    const fields = extractReceiptFields(`ספק בע״מ\nקבלה\nסה״כ לתשלום ${total} ₪\nמחיר פריט 20 ₪`);
+    assert.deepEqual(fields.amount_alternatives, []);
+  }
 });
 
 test("specific Hebrew fee chooses the matching existing RMI category", () => {
@@ -214,6 +260,46 @@ www.iec.co.il
   assert.equal(fields.category_id, "electric");
   assert.equal(fields.payment_status, "unpaid");
   assert.equal(fields.notes, undefined);
+});
+
+test("electricity supplier OCR errors resolve using bill evidence without an existing supplier", () => {
+  const fields = extractReceiptFields('חברת לשמל\nחשבון חשמל\nwww.iec.co.il\nסה״כ לתשלום 361.95 ₪', { categories: [{ id: 'electric', name: 'חשמל ותאורה' }] });
+  assert.equal(fields.merchant, 'חברת החשמל לישראל בע"מ');
+  assert.equal(fields.amount, '361.95');
+  assert.equal(fields.category_id, 'electric');
+  assert.equal(fields.document_type, 'payment_request');
+  assert.equal(fields.payment_status, 'unpaid');
+  // A mention in the customer's details cannot replace the actual supplier.
+  const other = extractReceiptFields('שם הספק: אור עבודות בע״מ\nקבלה\nלכבוד: חברת החשמל\nwww.iec.co.il\nסה״כ לתשלום 100 ₪');
+  assert.equal(other.merchant, 'אור עבודות בע"מ');
+  assert.deepEqual(other.merchant_candidates, ['אור עבודות בע"מ']);
+});
+
+test("logo-only electricity PDFs use utility evidence and never the customer column as supplier", () => {
+  const fields = extractReceiptFields(`חשבונית מס / קבלה
+מספר חברה 520000472 לכבוד:
+שם הלקוח בע״מ
+מספר חשבון חוזה: 341742993
+www.iec.co.il
+חיוב בגין צריכה סה״כ 615 קוט״ש 266.30
+סה״כ לתשלום 361.95 ₪`, { categories: [{ id: 'electric', name: 'חשמל' }] });
+  assert.equal(fields.merchant, 'חברת החשמל לישראל בע"מ');
+  assert.deepEqual(fields.merchant_candidates, ['חברת החשמל לישראל בע"מ']);
+  assert.equal(fields.category_id, 'electric');
+  const other = extractReceiptFields('חשבונית מס\nמספר חברה 520000472 לכבוד:\nשם הלקוח בע״מ\nסה״כ לתשלום 100 ₪');
+  assert.equal(other.merchant, undefined);
+  assert.deepEqual(other.merchant_candidates, []);
+});
+
+test("older electricity bill layouts and OCR heading artifacts cannot become supplier names", () => {
+  for (const title of ['עמוד', '* | חשבון דוחודושי', '* | חשבון דוחודש\'']) {
+    const fields = extractReceiptFields(`${title}\nחשבונית מס / קבלה\nמספר חברה 520000472 לכבוד:\nשם הלקוח\nמספר חוזה: 1234567\nwww.iec.co.il\nחיוב בגין צריכה 304קוט״ש\nסה״כ לתשלום 199.61 ₪`, { categories: [{ id: 'electric', name: 'חשמל' }] });
+    assert.equal(fields.merchant, 'חברת החשמל לישראל בע"מ');
+    assert.deepEqual(fields.merchant_candidates, ['חברת החשמל לישראל בע"מ']);
+    assert.equal(fields.category_id, 'electric');
+    assert.equal(fields.amount, '199.61');
+  }
+  assert.equal(extractReceiptFields('עמוד\n* | חשבון דוחודושי\nסה״כ לתשלום 100 ₪').merchant, undefined);
 });
 
 test("taxable base cannot compete with the final receipt total", () => {
