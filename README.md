@@ -8,7 +8,7 @@ A private, shared expense ledger for renovating a **נחלה בבית חנניה
 - Shared project ledger with supplier/authority, amount, currency, category, project stage, payment status, due date, reference number and notes.
 - Separate **paid**, **unpaid** and **estimate** amounts. All-project overview by default, optional month/category/merchant filters and 25-row pagination. Currency amounts are never converted or added across currencies.
 - Private PDF/JPG/PNG attachments, up to 10 MB; server checks file signatures. Receipt links expire after 60 seconds. Receipt OCR reads Hebrew and English on-device. Each attachment has a separate review before applying supplier, final total, dates, reference, suggested category and payment status. Digital PDFs use embedded text when possible; scanned documents use local OCR. Ambiguous totals require a choice, and invoices alone never establish payment.
-- Project members can view shared expenses; creators and administrators can edit or delete them. Administrators can invite read-only members, manage access, and export filtered expenses to XLSX, CSV or JSON.
+- Project members can view shared expenses; creators and administrators can edit or delete them. Administrators manage separate lists for admins, members, pending invitations and revoked access, edit roles/access and resend links without changing permissions. Invitations use real Supabase sign-in status; unavailable status is shown explicitly. Every member can export filtered expenses to XLSX, CSV or JSON.
 - Offline expense drafts and receipt files are stored in IndexedDB, isolated by account. A visible status and draft queue show pending uploads, permission errors and conflicts. Sync retries on reconnect, foreground return and every 30 seconds while the app is visible; iOS users should keep or reopen the app for uploads. Retries use stable expense/attachment IDs and optimistic edit versions.
 - An installable iOS home-screen app that keeps the normal page URLs offline, including category details and date/search filters. Cached views share the online navigation, expense table and category list. The offline shell includes expense fields before the first dialog is opened, so expenses and attachments can be saved immediately after losing connection. Only the public shell/assets are service-worker cached; authenticated HTML, RSC, auth and API responses remain network-only. The offline list is explicitly a cached subset, not the complete ledger.
 - Connection status stays hidden during normal online use; it appears for lost connection, pending uploads or errors. Navigation selects the destination immediately, including while its skeleton is loading.
@@ -36,7 +36,7 @@ Do **not** create or commit environment files. For local development, use extern
 
 ## Database
 
-Apply migrations in `supabase/migrations/` in order; fresh projects must apply all five. `supabase/config.toml` stores non-secret auth configuration and keeps public signup disabled. Auth invitation records must also exist in Supabase Auth; adding an allowlist email alone does not create a user.
+Apply migrations in `supabase/migrations/` in order; fresh projects must apply all seven. The receipt index supports ledger/summary/export lookups. The last-admin trigger serializes admin removals and keeps at least one active admin even during concurrent edits. Both new migrations must be deployed to Supabase to enable their database behavior. `supabase/config.toml` stores non-secret auth configuration and keeps public signup disabled. Auth invitation records must also exist in Supabase Auth; adding an allowlist email alone does not create a user.
 
 Passkey authentication is enabled for `https://expenses.arbibe.dev` with relying party ID `expenses.arbibe.dev`. After signing in with the approved email link once, users can register a Passkey from **My Account**; Apple devices can offer Face ID or Touch ID and iCloud Keychain sync. Keep the relying party ID stable because changing it invalidates registered credentials. Email links remain available as a fallback.
 
@@ -57,7 +57,7 @@ The database security test is transactional and rolls back its fixtures:
 npx supabase db query --linked --project-ref YOUR_PROJECT_REF --file tests/security.sql
 ```
 
-It verifies outsider denial, receipt permissions, approved household reads, creator spoof prevention, admin edits and immediate membership revocation. A signed receipt URL already issued remains usable until its short expiry.
+It verifies outsider denial, receipt permissions, approved household reads, creator spoof prevention, admin edits and immediate membership revocation. A signed receipt URL already issued remains usable until its short expiry. `tests/admin-guard.sql` additionally tests final-admin revoke/demote/delete on a disposable database, with concurrency-check instructions; do not run that fixture script during live user flows.
 
 ## Domain
 

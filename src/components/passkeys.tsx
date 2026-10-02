@@ -56,19 +56,28 @@ export function PasskeySignIn() {
 
 export function PasskeyManager() {
   const [passkeys, setPasskeys] = useState<Passkey[]>([]);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const supported = useSyncExternalStore(passkeySupportSubscribe, passkeySupportSnapshot, () => false);
 
   const refresh = useCallback(async () => {
-    const { createClient } = await import("@/lib/supabase/browser");
-    const { data, error: listError } = await createClient().auth.passkey.list();
-    if (listError) {
-      setError(passkeyMessage(listError));
-      return;
+    setLoading(true);
+    setError("");
+    try {
+      const { createClient } = await import("@/lib/supabase/browser");
+      const { data, error: listError } = await createClient().auth.passkey.list();
+      if (listError) {
+        setError(passkeyMessage(listError));
+        return;
+      }
+      setPasskeys((data ?? []) as Passkey[]);
+    } catch {
+      setError("לא ניתן לטעון את אמצעי הכניסה. בדקו את החיבור ונסו שוב.");
+    } finally {
+      setLoading(false);
     }
-    setPasskeys((data ?? []) as Passkey[]);
   }, []);
 
   useEffect(() => {
@@ -97,6 +106,7 @@ export function PasskeyManager() {
   }
 
   async function removePasskey(passkey: Passkey) {
+    if (!window.confirm(`להסיר את ${passkey.friendly_name || "ה־Passkey"}? הכניסה באמצעותו לא תהיה זמינה עוד. אפשר להיכנס בקישור אימייל.`)) return;
     setBusy(true);
     setError("");
     setMessage("");
@@ -127,15 +137,17 @@ export function PasskeyManager() {
         <p className="muted">כדי להוסיף Passkey, פתחו את החשבון ב־Safari או בדפדפן תומך דרך חיבור מאובטח.</p>
       ) : (
         <>
+          {loading && <p className="muted" role="status">טוענים אמצעי כניסה…</p>}
+          {!loading && !error && passkeys.length === 0 && <p className="muted">עדיין לא נוסף Passkey לחשבון.</p>}
           {passkeys.length > 0 && <ul className="passkey-list">
             {passkeys.map((passkey) => (
               <li key={passkey.id}>
                 <span><Fingerprint size={17} /><strong>{passkey.friendly_name || "Passkey"}</strong><small>נוסף ב־{new Date(passkey.created_at).toLocaleDateString("he-IL")}</small></span>
-                <button className="icon-button" type="button" onClick={() => void removePasskey(passkey)} disabled={busy} aria-label={`הסרת ${passkey.friendly_name || "Passkey"}`}><Trash2 size={17} /></button>
+                <button className="icon-button" type="button" onClick={() => void removePasskey(passkey)} disabled={busy || loading} aria-label={`הסרת ${passkey.friendly_name || "Passkey"}`}><Trash2 size={17} /></button>
               </li>
             ))}
           </ul>}
-          <button className="primary" type="button" onClick={() => void addPasskey()} disabled={busy}>
+          <button className="primary" type="button" onClick={() => void addPasskey()} disabled={busy || loading}>
             {busy ? <LoaderCircle className="spin" size={18} /> : <Plus size={18} />}
             {busy ? "ממתינים לאימות…" : "הוספת Passkey למכשיר הזה"}
           </button>
@@ -143,6 +155,7 @@ export function PasskeyManager() {
       )}
       {message && <p className="message success" role="status">{message}</p>}
       {error && <p className="message error" role="alert">{error}</p>}
+      {error && supported && <button className="secondary" type="button" disabled={busy || loading} onClick={() => void refresh()}>טעינה מחדש</button>}
     </section>
   );
 }

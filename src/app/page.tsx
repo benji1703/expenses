@@ -21,10 +21,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { requireMember } from "@/lib/auth";
-import {
-  InviteForm,
-  MemberAccess,
-} from "@/components/forms";
+import { AccessManagement } from "@/components/access-management";
+import { enrichAccessMembers } from "@/lib/access-server";
 import { logout } from "./actions";
 import { money, type Category, type Expense, type ExpenseReceipt } from "@/lib/expenses";
 import { AccountPasskeys } from "@/components/account-passkeys";
@@ -73,7 +71,8 @@ export default async function Home({
     .from("expenses")
     .select("*,expense_receipts(id,expense_id)", { count: "exact" })
     .order("spent_on", { ascending: false })
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false });
   if (month) query = query.gte("spent_on", `${month}-01`).lt("spent_on", end);
   if (/^[0-9a-f-]{36}$/.test(categoryId))
     query = query.eq("category_id", categoryId);
@@ -95,6 +94,8 @@ export default async function Home({
         ? supabase.from("members").select("*").order("created_at")
         : Promise.resolve({ data: [] }),
     ]);
+  const access = section === "household" && member.role === "admin"
+    ? await enrichAccessMembers(membersResult.data ?? []) : null;
   const categories: Category[] = (categoryResult.data ?? []).map(
     (category) => ({
       ...category,
@@ -157,8 +158,10 @@ export default async function Home({
       return `${c.color} ${start}% ${start + (c.total / chartTotal) * 100}%`;
     })
     .join(",");
+  const ledgerPath = section === "category" ? `/categories/${categoryId}` : "/expenses";
   const pageLink = (p: number) =>
-    `${section === "category" ? `/categories/${categoryId}` : "/expenses"}?${new URLSearchParams({ month, category: categoryId, q: search, page: String(p) })}`;
+    `${ledgerPath}?${new URLSearchParams({ month, category: categoryId, q: search, page: String(p) })}`;
+  const resetMonthLink = section === "overview" ? "/" : `${ledgerPath}?${new URLSearchParams({ category: categoryId, q: search })}`;
   const failed =
     categoryResult.error || expensesResult.error || summaryResult.error;
   const canWrite = member.role !== "read_only";
@@ -214,6 +217,7 @@ export default async function Home({
             {section === "overview" ? "סקירה" : section === "category" ? categoryMap.get(categoryId)?.name ?? "קטגוריה" : "הוצאות ותשלומים"} <span>/</span> <span className="muted">{monthLabel}</span>
           </h2>
           <form>
+            {needsExpenses && <><input type="hidden" name="q" value={search} />{section === "expenses" && <input type="hidden" name="category" value={categoryId} />}</>}
             <label className="sr-only" htmlFor="overview-month">
               סינון לפי חודש
             </label>
@@ -227,8 +231,8 @@ export default async function Home({
             />
             <button className="secondary">הצגה</button>
             {month && (
-              <AppLink className="text-button" href="/">
-                כל הפרויקט
+              <AppLink className="text-button" href={resetMonthLink}>
+                כל התאריכים
               </AppLink>
             )}
           </form>
@@ -327,11 +331,11 @@ export default async function Home({
             <div>
               <h2>רשימת הוצאות</h2>
             </div>
-            <span className="count-tag">
+            <div className="section-heading-actions"><span className="count-tag">
               {expensesResult.count ?? 0} הוצאות
-            </span>
+            </span>{canWrite && <ExpenseForm categories={categories} merchants={merchants} />}</div>
           </div>
-          <ExportPanel categories={categories} />
+          <ExportPanel key={`${month}:${categoryId}:${search}`} categories={categories} filters={{ from: month ? `${month}-01` : "", to: month ? new Date(Date.UTC(year, m, 0)).toISOString().slice(0, 10) : "", category: categoryId, q: search }} />
           <form className="filters">
             <div className="search-input">
               <Search size={17} />
@@ -346,7 +350,7 @@ export default async function Home({
               />
             </div>
             <input type="hidden" name="month" value={month} />
-            <label className="sr-only" htmlFor="category">
+            {section === "expenses" && <><label className="sr-only" htmlFor="category">
               סינון קטגוריות
             </label>
             <select id="category" name="category" defaultValue={categoryId}>
@@ -356,10 +360,10 @@ export default async function Home({
                   {c.name}
                 </option>
               ))}
-            </select>
+            </select></>}
             <button className="secondary">סינון</button>
-            {(search || categoryId) && (
-              <AppLink className="text-button" href={`/?month=${month}#ledger`}>
+            {(search || (section === "expenses" && categoryId)) && (
+              <AppLink className="text-button" href={`${ledgerPath}?${new URLSearchParams({ month })}`}>
                 ניקוי
               </AppLink>
             )}
@@ -375,9 +379,6 @@ export default async function Home({
                   : "אין הוצאות להצגה"}
               </h3>
               {(search || categoryId) && <p className="muted">נסו חיפוש או קטגוריה אחרים.</p>}
-              {!search && !categoryId && canWrite && (
-                <ExpenseForm categories={categories} merchants={merchants} />
-              )}
             </div>
           )} />
           <div className="table-footer">
@@ -409,44 +410,7 @@ export default async function Home({
           </div>
         </section>}
         </>}
-        {member.role === "admin" && section === "household" && (
-          <section className="household-section" id="household">
-            <div>
-              <h2>גישה</h2>
-              <p className="muted">
-                רק כתובות שאושרו יכולות לצפות בהוצאות ובמסמכים.
-              </p>
-              <div className="members-list">
-                {membersResult.data?.map((person) => (
-                  <div key={person.email}>
-                    <span className="avatar small">
-                      {person.email[0].toUpperCase()}
-                    </span>
-                    <div>
-                      <strong>{person.email}</strong>
-                      <small>
-                        {person.role === "admin"
-                          ? "מנהל"
-                          : person.role === "read_only"
-                            ? "צפייה בלבד"
-                            : "צפייה ועריכה"} ·{" "}
-                        {person.active ? "גישה פעילה" : "הגישה בוטלה"}
-                      </small>
-                    </div>
-                    {person.role !== "admin" && (
-                      <MemberAccess
-                        email={person.email}
-                        active={person.active}
-                        role={person.role === "read_only" ? "read_only" : "member"}
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-            <InviteForm />
-          </section>
-        )}
+        {access && <AccessManagement members={access.members} currentEmail={member.email} statusAvailable={access.statusAvailable} loadError={"error" in membersResult && !!membersResult.error} />}
         {section === "guide" && <RenovationGuide />}
         {section === "account" && <div className="account-content">
           <div className="route-heading account-heading">

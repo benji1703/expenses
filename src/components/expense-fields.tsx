@@ -9,14 +9,17 @@ import { queueExpense } from "@/lib/offline-sync";
 import { ReceiptReview } from "@/components/receipt-review";
 import type { ReceiptFields } from "@/lib/receipt-ocr";
 import { FormStatus } from "@/components/form-status";
+import { localDateInputValue } from "@/lib/dialog-dismiss";
 
 const initial: ActionState = {};
 
-export default function ExpenseFields({ categories, merchants = [], expense, onSaved }: {
+export default function ExpenseFields({ categories, merchants = [], expense, onSaved, onDirty, onPendingChange }: {
   categories: Category[];
   merchants?: string[];
   expense?: Expense;
   onSaved: () => void;
+  onDirty?: () => void;
+  onPendingChange?: (pending: boolean) => void;
 }) {
   const [state, action, pending] = useActionState(async (_previous: ActionState, form: FormData): Promise<ActionState> => {
     try { return { success: await queueExpense(form, expense) }; }
@@ -31,8 +34,10 @@ export default function ExpenseFields({ categories, merchants = [], expense, onS
   useEffect(() => {
     if (state.success) onSaved();
   }, [state.success, onSaved]);
+  useEffect(() => { onPendingChange?.(pending); }, [pending, onPendingChange]);
 
   function applyScan(fields: ReceiptFields) {
+    onDirty?.();
     const next: Record<string, string> = {};
     for (const name of ["merchant", "amount", "spent_on", "currency", "category_id", "payment_status", "due_on", "reference", "notes"] as const) {
       const element = formRef.current?.elements.namedItem(name);
@@ -57,6 +62,7 @@ export default function ExpenseFields({ categories, merchants = [], expense, onS
         ספק / קבלן / רשות
         <input
           name="merchant"
+          disabled={pending}
           placeholder="למשל: רמ״י, אדריכל או קבלן"
           defaultValue={expense?.merchant}
           required
@@ -69,7 +75,9 @@ export default function ExpenseFields({ categories, merchants = [], expense, onS
           סכום
           <input
             name="amount"
+            disabled={pending}
             type="number"
+            inputMode="decimal"
             min="0.01"
             max="99999999.99"
             step="0.01"
@@ -82,6 +90,7 @@ export default function ExpenseFields({ categories, merchants = [], expense, onS
           מטבע
           <select
             name="currency"
+            disabled={pending}
             defaultValue={expense?.currency ?? "ILS"}
           >
             <option value="ILS">ILS · ₪</option>
@@ -96,11 +105,12 @@ export default function ExpenseFields({ categories, merchants = [], expense, onS
           תאריך ההוצאה / הדרישה
           <input
             name="spent_on"
+            disabled={pending}
             type="date"
             required
             defaultValue={
               expense?.spent_on ??
-              new Date().toLocaleDateString("en-CA")
+              localDateInputValue()
             }
           />
         </label>
@@ -108,6 +118,7 @@ export default function ExpenseFields({ categories, merchants = [], expense, onS
           קטגוריה
           <select
             name="category_id"
+            disabled={pending}
             defaultValue={expense?.category_id ?? ""}
             required
           >
@@ -172,6 +183,7 @@ export default function ExpenseFields({ categories, merchants = [], expense, onS
           סטטוס תשלום
           <select
             name="payment_status"
+            disabled={pending}
             required
             defaultValue={expense?.payment_status ?? "paid"}
           >
@@ -187,6 +199,7 @@ export default function ExpenseFields({ categories, merchants = [], expense, onS
           שלב בפרויקט
           <select
             name="stage"
+            disabled={pending}
             defaultValue={expense?.stage ?? "construction"}
           >
             {Object.entries(stages).map(([value, label]) => (
@@ -202,6 +215,7 @@ export default function ExpenseFields({ categories, merchants = [], expense, onS
           מועד לתשלום (אם רלוונטי)
           <input
             name="due_on"
+            disabled={pending}
             type="date"
             defaultValue={expense?.due_on ?? ""}
           />
@@ -210,6 +224,7 @@ export default function ExpenseFields({ categories, merchants = [], expense, onS
           מספר שובר / חשבונית / תיק
           <input
             name="reference"
+            disabled={pending}
             maxLength={160}
             defaultValue={expense?.reference}
             placeholder="מספר אסמכתה"
@@ -220,6 +235,7 @@ export default function ExpenseFields({ categories, merchants = [], expense, onS
         הערה <span className="muted">(לא חובה)</span>
         <textarea
           name="notes"
+          disabled={pending}
           placeholder="פירוט העבודה, השומה או דרישת התשלום…"
           maxLength={2000}
           defaultValue={expense?.notes}

@@ -17,3 +17,4 @@ export function selectedNavigation(current: string, destination: string) {
   return workspaceRoute(current)?.href === destination;
 }
 export const localNavigation = "meshek48:local-navigation";
+export const workspaceRefresh = "meshek48:workspace-refresh";

@@ -13,7 +13,7 @@ const payloadSchema = z.object({
   files: z.array(z.object({ id: z.uuid(), path: z.string().max(200), type: z.enum(["application/pdf", "image/jpeg", "image/png"]) })).max(10),
 });
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status, headers: { "Cache-Control": "no-store" } });
-async function authorizeWriter() {
+async function authorizeMember(writable = false) {
   // Revalidate identity and membership on every replay; cached access never authorizes a write.
   const supabase = await createClient();
   const { data: claims, error: authError } = await supabase.auth.getClaims();
@@ -21,11 +21,11 @@ async function authorizeWriter() {
   if (authError || !user?.sub || typeof user.email !== "string") return fail("יש להתחבר מחדש כדי לסנכרן את הטיוטות.", 401);
   const { data: member, error: memberError } = await supabase.from("members").select("role").eq("email", user.email.toLowerCase()).eq("active", true).single();
   if (memberError && memberError.code !== "PGRST116") return fail("שירות ההרשאות אינו זמין. ננסה שוב.", 503);
-  if (!member || member.role === "read_only") return fail("אין הרשאה לסנכרן שינויים. הטיוטות נשארו במכשיר.", 403);
+  if (!member || (writable && member.role === "read_only")) return fail("אין הרשאה לסנכרן שינויים. הטיוטות נשארו במכשיר.", 403);
   return { supabase, user, member };
 }
 export async function GET(request: Request) {
-  const auth = await authorizeWriter();
+  const auth = await authorizeMember();
   if (auth instanceof Response) return auth;
   const id = new URL(request.url).searchParams.get("expense_id");
   if (!id) {
@@ -34,6 +34,7 @@ export async function GET(request: Request) {
     if (categories?.error) return fail("לא ניתן לטעון קטגוריות כרגע.", 503);
     return NextResponse.json({ profile: { id: auth.user.sub, role: auth.member.role }, ...(categories ? { categories: categories.data } : {}) }, { headers: { "Cache-Control": "no-store" } });
   }
+  if (auth.member.role === "read_only") return fail("אין הרשאה לשנות את ההוצאה.", 403);
   if (!z.uuid().safeParse(id).success) return fail("מזהה ההוצאה אינו תקין.", 400);
   const { data: expense, error } = await auth.supabase.from("expenses").select("*").eq("id", id).maybeSingle();
   if (error) return fail("לא ניתן לטעון את ההוצאה כרגע.", 503);
@@ -44,7 +45,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const origin = request.headers.get("origin");
   if (origin && origin !== new URL(request.url).origin) return fail("מקור הבקשה אינו מאושר.", 403);
-  const auth = await authorizeWriter();
+  const auth = await authorizeMember(true);
   if (auth instanceof Response) return auth;
   const { supabase, user, member } = auth;
   const payload = payloadSchema.safeParse(await request.json().catch(() => null));
@@ -56,7 +57,8 @@ export async function POST(request: Request) {
   if (!draft.editing && draft.operation_id !== draft.expense_id) return fail("מזהה ההוצאה אינו תקין.", 400);
   if (draft.editing && !draft.expected_updated_at) return fail("נדרשת גרסת ההוצאה המקורית לעריכה.", 409);
   const expense = { ...parsed.data, amount: Number(parsed.data.amount) };
-  const { data: category } = await supabase.from("categories").select("id").eq("id", expense.category_id).maybeSingle();
+  const { data: category, error: categoryError } = await supabase.from("categories").select("id").eq("id", expense.category_id).maybeSingle();
+  if (categoryError) return fail("לא ניתן לבדוק את הקטגוריה כרגע. ננסה שוב.", 503);
   if (!category) return fail("הקטגוריה אינה זמינה. עדכנו את הטיוטה.", 400);
   const { data: existing, error: lookupError } = await supabase.from("expenses").select("*").eq("id", draft.expense_id).maybeSingle();
   if (lookupError) return fail("לא ניתן לבדוק את ההוצאה כרגע. ננסה שוב.", 503);

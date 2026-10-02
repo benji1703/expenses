@@ -17,7 +17,7 @@ const filtersSchema = z.object({
   currency: z.union([z.enum(["ILS", "EUR", "USD", "GBP"]), z.literal("")]).default(""),
   q: z.string().trim().max(100).default(""),
 });
-type ExportExpense = Expense & { created_at: string; updated_at: string };
+type ExportExpense = Expense & { created_at: string; updated_at: string; expense_receipts: { count: number }[] };
 
 const columns = [
   ["id", "מזהה"],
@@ -99,14 +99,17 @@ function csv(rows: Record<string, unknown>[]) {
 
 export async function GET(request: Request) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user?.email) return Response.json({ error: "נדרשת התחברות." }, { status: 401 });
-  const { data: member } = await supabase
+  const { data: claims, error: authError } = await supabase.auth.getClaims();
+  const user = claims?.claims;
+  if (authError || !user?.sub || typeof user.email !== "string")
+    return Response.json({ error: "נדרשת התחברות." }, { status: 401 });
+  const { data: member, error: memberError } = await supabase
     .from("members")
     .select("email,active")
     .eq("email", user.email.toLowerCase())
     .eq("active", true)
     .maybeSingle();
+  if (memberError) return Response.json({ error: "לא ניתן לבדוק הרשאות כרגע. נסו שוב." }, { status: 503 });
   if (!member) return Response.json({ error: "אין גישה לפרויקט." }, { status: 403 });
 
   const params = new URL(request.url).searchParams;
@@ -116,7 +119,10 @@ export async function GET(request: Request) {
   if (filter.from && filter.to && filter.from > filter.to)
     return Response.json({ error: "תאריך ההתחלה חייב להיות לפני תאריך הסיום." }, { status: 400 });
 
-  let query = supabase.from("expenses").select("*").order("spent_on", { ascending: false }).order("created_at", { ascending: false });
+  // Count receipts beside each expense, rather than fetching thousands of receipt rows.
+  // The id breaks date/time ties so paginated exports have a deterministic order.
+  let query = supabase.from("expenses").select("*,expense_receipts(count)")
+    .order("spent_on", { ascending: false }).order("created_at", { ascending: false }).order("id", { ascending: false });
   if (filter.from) query = query.gte("spent_on", filter.from);
   if (filter.to) query = query.lte("spent_on", filter.to);
   if (filter.category) query = query.eq("category_id", filter.category);
@@ -129,23 +135,13 @@ export async function GET(request: Request) {
   for (let start = 0; start < 26000; start += 1000) {
     const { data, error } = await query.range(start, start + 999);
     if (error) return Response.json({ error: "לא ניתן לטעון את נתוני היצוא." }, { status: 500 });
-    allExpenses.push(...(data as ExportExpense[]));
+    allExpenses.push(...((data ?? []) as ExportExpense[]));
     if (allExpenses.length > 25000)
       return Response.json({ error: "היצוא מוגבל ל־25,000 הוצאות בכל פעם. צמצמו את טווח התאריכים או הוסיפו מסנן." }, { status: 413 });
     if (!data || data.length < 1000) break;
   }
   const { data: categories, error: categoryError } = await supabase.from("categories").select("id,name");
   if (categoryError) return Response.json({ error: "לא ניתן לטעון את הקטגוריות." }, { status: 500 });
-  const expenseIds = allExpenses.map((expense) => expense.id);
-  const attachedExpenseIds = new Set<string>();
-  for (let start = 0; start < expenseIds.length; start += 150) {
-    const { data: receipts, error: receiptsError } = await supabase
-      .from("expense_receipts")
-      .select("expense_id")
-      .in("expense_id", expenseIds.slice(start, start + 150));
-    if (receiptsError) return Response.json({ error: "לא ניתן לטעון את הקבצים המצורפים." }, { status: 500 });
-    receipts?.forEach((receipt) => attachedExpenseIds.add(receipt.expense_id));
-  }
   const names = new Map((categories as Pick<Category, "id" | "name">[]).map((category) => [category.id, category.name]));
   const rows = allExpenses.map((expense) => ({
     id: expense.id,
@@ -162,12 +158,12 @@ export async function GET(request: Request) {
     stage: stages[expense.stage as keyof typeof stages] ?? expense.stage,
     reference: expense.reference,
     notes: expense.notes,
-    receipt_attached: Boolean(expense.receipt_path || attachedExpenseIds.has(expense.id)),
+    receipt_attached: Boolean(expense.receipt_path || expense.expense_receipts?.some((receipt) => receipt.count > 0)),
     created_at: expense.created_at,
     updated_at: expense.updated_at,
   }));
   const datePart = [filter.from || "all", filter.to || "dates"].join("_to_");
-  const filename = `mishk-48-expenses-${datePart}.${filter.format}`;
+  const filename = `meshek-48-expenses-${datePart}.${filter.format}`;
   const headers = {
     "Cache-Control": "private, no-store",
     "Content-Disposition": `attachment; filename="expenses.${filter.format}"; filename*=UTF-8''${encodeURIComponent(filename)}`,

@@ -7,6 +7,7 @@ import { AppLink } from "@/components/app-link";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { isDisconnected, subscribeConnection } from "@/lib/connection-state";
+import { outsideDialog } from "@/lib/dialog-dismiss";
 
 const initial: ActionState = {};
 
@@ -39,8 +40,9 @@ function CategoryDialog({
       aria-labelledby="category-dialog-title"
       onClose={onClose}
       onClick={(event) => {
-        if (event.target === dialog.current) dialog.current.close();
+        if (!pending && event.target === dialog.current && outsideDialog(dialog.current.getBoundingClientRect(), event.clientX, event.clientY)) dialog.current.close();
       }}
+      onCancel={(event) => { if (pending) event.preventDefault(); }}
     >
       <div className="dialog-header">
         <div>
@@ -52,6 +54,7 @@ function CategoryDialog({
         <button
           className="icon-button"
           type="button"
+          disabled={pending}
           aria-label="סגירה"
           onClick={() => dialog.current?.close()}
         >
@@ -64,6 +67,7 @@ function CategoryDialog({
           שם הקטגוריה
           <input
             name="name"
+            disabled={pending}
             required
             maxLength={60}
             defaultValue={category?.name ?? ""}
@@ -76,6 +80,7 @@ function CategoryDialog({
           <input
             className="category-color-input"
             name="color"
+            disabled={pending}
             type="color"
             defaultValue={category?.color ?? "#9b8c7c"}
             aria-label="צבע הקטגוריה"

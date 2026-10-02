@@ -62,6 +62,14 @@ export function syncDrafts(profile: OfflineProfile, onProgress?: (name: string) 
             });
             if (!uploaded.ok) {
               const failure = await uploaded.json().catch(() => null) as { message?: string; error?: string; statusCode?: string } | null;
+              const authCode = [401, 403].includes(uploaded.status) ? uploaded.status : Number(failure?.statusCode);
+              if ([401, 403].includes(authCode)) {
+                const error = authCode === 401
+                  ? "יש להתחבר מחדש כדי להעלות את הקבצים. הטיוטה נשארה במכשיר."
+                  : "אין הרשאה להעלות קבצים. הטיוטה נשארה במכשיר; בדקו את הרשאות החשבון.";
+                await putDraft({ ...draft, blocked: true, error_code: authCode, error });
+                return { pending: (await listDrafts(profile.id)).length, synced, connected: true, error };
+              }
               if (uploaded.status !== 409 && failure?.statusCode !== "409" && !/already exists|duplicate/i.test(failure?.message ?? failure?.error ?? "")) throw new Error("העלאת הקובץ לא הושלמה.");
             }
           }

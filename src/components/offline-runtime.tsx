@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { CloudUpload, LoaderCircle, WifiOff } from "lucide-react";
 import { isDisconnected, markConnection, subscribeConnection } from "@/lib/connection-state";
-import { localNavigation, workspaceRoute } from "@/lib/workspace-navigation";
+import { localNavigation, workspaceRefresh, workspaceRoute } from "@/lib/workspace-navigation";
 import { DraftRepair } from "@/components/draft-repair";
 import { DraftConflict } from "@/components/draft-conflict";
 import { activeProfile, clearActiveProfile, listDrafts, offlineChanged, putDraft, removeDraft } from "@/lib/offline-store";
@@ -12,7 +12,6 @@ import type { PendingExpense } from "@/lib/offline-types";
 
 export function OfflineRuntime() {
   const pathname = usePathname();
-  const router = useRouter();
   const offline = useSyncExternalStore(subscribeConnection, isDisconnected, () => false);
   const [drafts, setDrafts] = useState<PendingExpense[]>([]);
   const [syncing, setSyncing] = useState("");
@@ -37,10 +36,10 @@ export function OfflineRuntime() {
         if (!mounted.current) return;
         setDrafts(await listDrafts(profile.id));
         markConnection(report.connected);
-        if (report.synced && !location.pathname.startsWith("/offline")) router.refresh();
+        if (report.synced) window.dispatchEvent(new Event(workspaceRefresh));
       } finally { syncingRef.current = false; if (mounted.current) setSyncing(""); }
     } catch { if (mounted.current) setStorageError("שמירה במכשיר אינה זמינה בדפדפן הזה. אל תסגרו טופס שלא נשמר."); }
-  }, [router]);
+  }, []);
   useEffect(() => {
     mounted.current = true;
     const changed = () => { void check(true); };

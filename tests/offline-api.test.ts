@@ -18,7 +18,7 @@ type Row = Record<string, unknown>;
 type Result = { data: Row | Row[] | null; error: { code: string; message: string } | null };
 function setup() {
   const expenses = new Map<string, Row>(), receipts = new Map<string, Row>();
-  const state = { role: "admin", failLinks: false, downloads: 0, mutations: 0, validFile: true, race: false };
+  const state = { role: "admin", failLinks: false, downloads: 0, mutations: 0, validFile: true, race: false, categoryFailure: false, categoryMissing: false };
   class Query {
     table: string; mode = "read"; filters = new Map<string, unknown>(); values: Row[] = []; singular = false;
     constructor(table: string) { this.table = table; }
@@ -34,7 +34,7 @@ function setup() {
       const error = (code: string): Result => ({ data: null, error: { code, message: "simulated" } });
       let result: Result;
       if (this.table === "members") result = ok({ role: state.role });
-      else if (this.table === "categories") result = ok({ id: category });
+      else if (this.table === "categories") result = state.categoryFailure ? error("503") : ok(state.categoryMissing ? null : { id: category });
       else {
         const table = this.table === "expenses" ? expenses : receipts;
         if (this.mode === "insert") {
@@ -55,7 +55,7 @@ function setup() {
     }
   }
   const client = { auth: { getClaims: async () => ({ data: { claims: { sub: owner, email: "owner@example.com" } }, error: null }) }, from: (table: string) => new Query(table) };
-  const loadedModule = { exports: {} as { POST: (request: Request) => Promise<Response> } };
+  const loadedModule = { exports: {} as { POST: (request: Request) => Promise<Response>; GET: (request: Request) => Promise<Response> } };
   const source = ts.transpileModule(readFileSync(new URL("../src/app/api/offline/expenses/route.ts", import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true } }).outputText;
   const localRequire = (name: string): unknown => {
     if (name === "@/lib/supabase/server") return { createClient: async () => client };
@@ -68,7 +68,8 @@ function setup() {
   vm.runInThisContext(`(function(require,module,exports){${source}\n})`)(localRequire, loadedModule, loadedModule.exports);
   const payload = { owner, operation_id: id, expense_id: id, editing: false, expected_updated_at: null as string | null, fields, files: [{ id: attachment, path: filePath, type: "image/png" }] };
   const post = (body = payload, origin = "https://expenses.example.com") => loadedModule.exports.POST(new Request("https://expenses.example.com/api/offline/expenses", { method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify(body) }));
-  return { state, expenses, receipts, payload, post };
+  const get = (params = "") => loadedModule.exports.GET(new Request(`https://expenses.example.com/api/offline/expenses${params}`));
+  return { state, expenses, receipts, payload, post, get };
 }
 
 test("offline API replay creates exactly one expense and one receipt", async () => {
@@ -98,6 +99,15 @@ test("fresh read-only access and cross-origin requests cannot mutate data", asyn
   assert.equal((await s.post(s.payload, "https://other.example.com")).status, 403);
   assert.equal(s.state.mutations, 0); assert.equal(s.state.downloads, 0);
 });
+test("read-only members can restore their cached workspace without access to writes or conflict editing", async () => {
+  const s = setup(); s.state.role = "read_only";
+  const identity = await s.get();
+  assert.equal(identity.status, 200);
+  assert.deepEqual(await identity.json(), { profile: { id: owner, role: "read_only" } });
+  assert.equal((await s.get(`?expense_id=${id}`)).status, 403);
+  assert.equal((await s.post()).status, 403);
+  assert.equal(s.state.mutations, 0); assert.equal(s.state.downloads, 0);
+});
 test("foreign attachment paths and invalid image signatures are rejected", async () => {
   const s = setup();
   assert.equal((await s.post({ ...s.payload, files: [{ ...s.payload.files[0], path: "another-owner/receipt.png" }] })).status, 400);
@@ -116,4 +126,19 @@ test("switching accounts never replays another owner's draft", async () => {
   const s = setup();
   assert.equal((await s.post({ ...s.payload, owner: "eeeeeeee-eeee-4eee-beee-eeeeeeeeeeee" })).status, 403);
   assert.equal(s.state.mutations, 0);
+});
+
+test("a transient category lookup failure stays retryable and cannot mutate an expense", async () => {
+  const s = setup(); s.state.categoryFailure = true;
+  assert.equal((await s.post()).status, 503);
+  assert.equal(s.state.mutations, 0); assert.equal(s.state.downloads, 0);
+  s.state.categoryFailure = false;
+  assert.equal((await s.post()).status, 200);
+  assert.equal(s.expenses.size, 1); assert.equal(s.receipts.size, 1);
+});
+
+test("an actually missing category requires repair instead of retrying indefinitely", async () => {
+  const s = setup(); s.state.categoryMissing = true;
+  assert.equal((await s.post()).status, 400);
+  assert.equal(s.state.mutations, 0); assert.equal(s.state.downloads, 0);
 });

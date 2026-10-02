@@ -18,7 +18,7 @@ function form() {
   return data;
 }
 
-test("offline save, lost acknowledgement and reconnect preserve files without duplicates", async () => {
+test("offline save, lost acknowledgement, storage auth failures and reconnect preserve files without duplicates", async () => {
   const eventTarget = new EventTarget();
   Object.defineProperty(globalThis, "indexedDB", { value: indexedDB, configurable: true });
   Object.defineProperty(globalThis, "window", { value: { dispatchEvent: eventTarget.dispatchEvent.bind(eventTarget), setTimeout, clearTimeout }, configurable: true });
@@ -27,12 +27,13 @@ test("offline save, lost acknowledgement and reconnect preserve files without du
   await store.saveSnapshot({ profile, categories: [], expenses: [], saved_at: "2026-10-02T10:00:00Z" });
   const realFetch = globalThis.fetch;
   const committed = new Map<string, unknown>(), uploads = new Set<string>();
-  let loseAck = true;
+  let loseAck = true, uploadAuthError = 0;
   globalThis.fetch = async (input, init) => {
     const url = String(input);
     if (!network.onLine) throw new TypeError("offline");
     if (url === "/api/offline/expenses" && !init?.method) return Response.json({ profile });
     if (url.includes("/storage/v1/object/receipts/")) {
+      if (uploadAuthError) return Response.json({ statusCode: String(uploadAuthError) }, { status: uploadAuthError });
       assert.ok(init?.body instanceof Blob);
       const bytes = new Uint8Array(await (init.body as Blob).arrayBuffer());
       assert.equal(bytes[0], 137);
@@ -45,7 +46,7 @@ test("offline save, lost acknowledgement and reconnect preserve files without du
     if (loseAck) { loseAck = false; throw new TypeError("connection lost after commit"); }
     return Response.json({ expense });
   };
-  type Sync = { queueExpense: (form: FormData) => Promise<string>; syncDrafts: (profile: OfflineProfile) => Promise<{ synced: number; connected: boolean }> };
+  type Sync = { queueExpense: (form: FormData) => Promise<string>; syncDrafts: (profile: OfflineProfile) => Promise<{ synced: number; connected: boolean; error?: string }> };
   const loadedModule = { exports: {} as Sync };
   const source = ts.transpileModule(readFileSync(new URL("../src/lib/offline-sync.ts", import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true } }).outputText;
   const localRequire = (name: string): unknown => {
@@ -68,6 +69,25 @@ test("offline save, lost acknowledgement and reconnect preserve files without du
     assert.equal((await loadedModule.exports.syncDrafts(profile)).synced, 1);
     assert.equal((await store.listDrafts(profile.id)).length, 0);
     assert.equal(committed.size, 1); assert.equal(uploads.size, 1);
+    for (const code of [401, 403]) {
+      uploadAuthError = code;
+      const committedBefore: number = committed.size;
+      await loadedModule.exports.queueExpense(form());
+      const report = await loadedModule.exports.syncDrafts(profile);
+      assert.equal(report.connected, true, "an auth rejection must not appear as lost connectivity");
+      assert.equal(report.synced, 0);
+      const [blocked] = await store.listDrafts(profile.id);
+      assert.equal(blocked.error_code, code); assert.equal(blocked.blocked, true);
+      assert.equal(blocked.files.length, 1); assert.equal(blocked.files[0].blob.size, 8);
+      assert.equal(committed.size, committedBefore);
+      const stillBlocked = await loadedModule.exports.syncDrafts(profile);
+      assert.equal(stillBlocked.synced, 0, "blocked auth failures must not be retried indefinitely");
+      uploadAuthError = 0;
+      await store.putDraft({ ...blocked, blocked: false, error: undefined, error_code: undefined });
+      assert.equal((await loadedModule.exports.syncDrafts(profile)).synced, 1);
+      assert.equal((await store.listDrafts(profile.id)).length, 0);
+      assert.equal(committed.size, committedBefore + 1);
+    }
     await store.saveSnapshot({ profile: { ...profile, role: "read_only" }, categories: [], expenses: [], saved_at: "2026-10-02T11:00:00Z" });
     await assert.rejects(() => loadedModule.exports.queueExpense(form()), /אין הרשאה/);
     assert.equal((await store.listDrafts(profile.id)).length, 0);

@@ -40,7 +40,7 @@ export function ExpenseTable({ expenses, categories, receiptsByExpense, role, ow
   const canWrite = role !== "read_only";
   return (
     <>
-          <div className="table-scroll">
+          <div className="table-scroll" role="region" aria-label="טבלת הוצאות, ניתן לגלול אופקית" tabIndex={0}>
             <table>
               <thead>
                 <tr>
@@ -68,9 +68,10 @@ export function ExpenseTable({ expenses, categories, receiptsByExpense, role, ow
                           {e.reference ? ` · ${e.reference}` : ""}
                         </small>
                         {e.notes && (
-                          <small className="expense-note" title={e.notes}>
-                            {e.notes}
-                          </small>
+                          <details className="expense-notes">
+                            <summary>הערה</summary>
+                            <p>{e.notes}</p>
+                          </details>
                         )}
                       </td>
                       <td>
@@ -82,7 +83,7 @@ export function ExpenseTable({ expenses, categories, receiptsByExpense, role, ow
                       <td className="date-cell">
                         {new Date(`${e.spent_on}T12:00:00Z`).toLocaleDateString(
                           "he-IL",
-                          { month: "short", day: "numeric" },
+                          { month: "short", day: "numeric", year: "numeric" },
                         )}
                       </td>
                       <td>
