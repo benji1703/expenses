@@ -28,7 +28,6 @@ export default function Loading() {
         <div className="sidebar-bottom"><div className="loading-profile" /></div>
       </aside>
       <main className="dashboard loading-dashboard" aria-hidden="true">
-        <div className="topbar"><span className="loading-line loading-short" /></div>
         <div className="loading-title">
           <span className="loading-line loading-caption" />
           <span className="loading-line loading-heading" />

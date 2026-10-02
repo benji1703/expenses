@@ -209,21 +209,8 @@ export default async function Home({
             <Fingerprint size={18} />
             החשבון שלי
           </AppLink>
-          <a className="nav-link house-link" href="https://house.arbibe.dev" target="_blank" rel="noopener noreferrer">
-            <ArrowUpRight size={18} />
-            אתר הבית
-          </a>
         </nav>
         <div className="sidebar-bottom">
-          <div className="privacy-note">
-            <span className="small-leaf">
-              <Sprout size={20} />
-            </span>
-            <strong>מסמכי הפרויקט</strong>
-            <p>
-              הוצאות, קבלות ודרישות תשלום.
-            </p>
-          </div>
           <div className="profile">
             <span className="avatar">
               {member.email.slice(0, 1).toUpperCase()}
@@ -247,13 +234,6 @@ export default async function Home({
         </div>
       </aside>
       <main className="dashboard" id="main-content" tabIndex={-1}>
-        <header className="topbar">
-          <Link href="https://house.arbibe.dev" target="_blank" rel="noopener noreferrer">אתר הבית <ArrowUpRight size={13} /></Link>
-          <span className="household-tag">
-            <span />
-            נחלה · בית חנניה
-          </span>
-        </header>
         {(section === "overview" || section === "categories") && <section className="page-heading">
           <div>
             <p className="eyebrow">משק 48 · בית חנניה</p>
@@ -627,7 +607,7 @@ export default async function Home({
         <footer className="dashboard-footer">
           <Sprout size={16} />
           משק 48 · בית חנניה
-          <span>ניהול תקציב, הוצאות ומסמכי השיפוץ · גישה למוזמנים בלבד</span>
+          <span>ניהול תקציב, הוצאות ומסמכי השיפוץ</span>
           <a href="https://house.arbibe.dev" target="_blank" rel="noopener noreferrer">לפרויקט הבית <ArrowUpRight size={14} /></a>
         </footer>
       </main>
