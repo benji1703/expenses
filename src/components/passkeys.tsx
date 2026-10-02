@@ -87,7 +87,7 @@ export function PasskeyManager() {
         setError(passkeyMessage(registerError));
         return;
       }
-      setMessage("ה־Passkey נוסף לחשבון. אפשר להשתמש בו לכניסה מהמכשיר הזה וממכשירים מסונכרנים.");
+      setMessage("ה־Passkey נוסף לחשבון.");
       await refresh();
     } catch {
       setError("לא ניתן להוסיף Passkey כרגע. נסו שוב.");
@@ -121,7 +121,7 @@ export function PasskeyManager() {
       <span className="section-icon"><KeyRound size={19} /></span>
       <div className="passkey-card-copy">
         <h2>כניסה עם Passkey</h2>
-        <p className="muted">השתמשו ב־Face ID, Touch ID או במפתח אבטחה. במכשירי Apple, Passkey יכול להסתנכרן דרך iCloud Keychain.</p>
+        <p className="muted">Face ID, Touch ID או מפתח אבטחה.</p>
       </div>
       {!supported ? (
         <p className="muted">כדי להוסיף Passkey, פתחו את החשבון ב־Safari או בדפדפן תומך דרך חיבור מאובטח.</p>

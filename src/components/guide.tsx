@@ -5,20 +5,15 @@ export function RenovationGuide() {
     <section className="knowledge-section" id="guide">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">לדעת לפני שמשלמים</p>
-          <h2>מידע ותשלומים לפרויקט</h2>
-          <p className="muted">
-            רמ״י, הוועדה המקומית, תכנון וביצוע — כל חיוב במקום שלו.
-          </p>
+          <h2>מדריך</h2>
         </div>
         <BookOpen size={23} />
       </div>
       <div className="guide-intro">
-        <strong>הפרויקט שלכם: שיפוץ נחלה בבית חנניה.</strong>
         <p>
           המידע הוא הסבר כללי וקישורים למקורות רשמיים, ואינו קביעת זכאות או חבות
           לנכס שלכם. הסכומים והאישורים נקבעים לפי החוזה, התוכנית, השומות ודרישות
-          הרשויות. לא הוזנו הוצאות לדוגמה או אומדנים אוטומטיים.
+          הרשויות.
         </p>
         <small>
           מקורות נבדקו: {verifiedOn} · לפני תשלום בדקו את הנוהל והדרישה

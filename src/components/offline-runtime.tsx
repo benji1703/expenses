@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { CloudCheck, CloudUpload, LoaderCircle, WifiOff } from "lucide-react";
+import { CloudUpload, LoaderCircle, WifiOff } from "lucide-react";
+import { isDisconnected, markConnection, subscribeConnection } from "@/lib/connection-state";
+import { localNavigation, workspaceRoute } from "@/lib/workspace-navigation";
 import { DraftRepair } from "@/components/draft-repair";
 import { DraftConflict } from "@/components/draft-conflict";
 import { activeProfile, clearActiveProfile, listDrafts, offlineChanged, putDraft, removeDraft } from "@/lib/offline-store";
@@ -11,11 +13,9 @@ import type { PendingExpense } from "@/lib/offline-types";
 export function OfflineRuntime() {
   const pathname = usePathname();
   const router = useRouter();
-  const [ready, setReady] = useState(false);
-  const [offline, setOffline] = useState(false);
+  const offline = useSyncExternalStore(subscribeConnection, isDisconnected, () => false);
   const [drafts, setDrafts] = useState<PendingExpense[]>([]);
   const [syncing, setSyncing] = useState("");
-  const [message, setMessage] = useState("");
   const [actionError, setActionError] = useState("");
   const [storageError, setStorageError] = useState("");
   const [expanded, setExpanded] = useState(false);
@@ -28,7 +28,6 @@ export function OfflineRuntime() {
       if (!mounted.current) return;
       const queued = profile ? await listDrafts(profile.id) : [];
       setDrafts(queued);
-      setOffline(!navigator.onLine);
       if (navigator.onLine) setActionError("");
       if (!sync || !profile || syncingRef.current || !queued.some((item) => !item.blocked) || !navigator.onLine || profile.role === "read_only") return;
       syncingRef.current = true;
@@ -36,8 +35,8 @@ export function OfflineRuntime() {
         const { syncDrafts } = await import("@/lib/offline-sync");
         const report = await syncDrafts(profile, (name) => { if (mounted.current) setSyncing(name); });
         if (!mounted.current) return;
-        setDrafts(await listDrafts(profile.id)); setOffline(!report.connected);
-        setMessage(report.error ?? (report.synced ? `${report.synced} הוצאות וקבצים סונכרנו.` : ""));
+        setDrafts(await listDrafts(profile.id));
+        markConnection(report.connected);
         if (report.synced && !location.pathname.startsWith("/offline")) router.refresh();
       } finally { syncingRef.current = false; if (mounted.current) setSyncing(""); }
     } catch { if (mounted.current) setStorageError("שמירה במכשיר אינה זמינה בדפדפן הזה. אל תסגרו טופס שלא נשמר."); }
@@ -61,12 +60,16 @@ export function OfflineRuntime() {
       const link = (event.target as Element)?.closest("a[href]");
       if (!link || link.hasAttribute("target") || link.hasAttribute("download") || link.hasAttribute("data-reconnect")) return;
       const url = new URL(link.getAttribute("href")!, location.href);
-      if (url.origin !== location.origin || !/^\/(?:$|expenses\/?$|categories(?:\/[^/]+)?\/?$|guide\/?$|account\/?$|household\/?$)/.test(url.pathname)) return;
+      if (url.origin !== location.origin || !workspaceRoute(url.pathname)) return;
       event.preventDefault(); event.stopImmediatePropagation();
-      const view = url.pathname.startsWith("/categories") ? "categories" : url.pathname === "/" ? "overview" : url.pathname.slice(1);
+      if (document.querySelector("[data-cached-workspace]")) {
+        history.pushState(null, "", url.pathname + url.search + url.hash);
+        window.dispatchEvent(new Event(localNavigation));
+        window.scrollTo({ top: 0 });
+        return;
+      }
       // A document navigation lets the service worker serve the cached shell without RSC.
-      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-      location.assign("/offline?view=" + encodeURIComponent(view));
+      location.assign(url.pathname + url.search + url.hash);
     };
     document.addEventListener("click", navigateOffline, true);
     return () => document.removeEventListener("click", navigateOffline, true);
@@ -75,7 +78,18 @@ export function OfflineRuntime() {
     const preventOnlineOnlyActions = (event: SubmitEvent) => {
       if (navigator.onLine && !offline) return;
       const form = event.target;
-      if (!(form instanceof HTMLFormElement) || form.dataset.offlineSafe === "true") return;
+      if (!(form instanceof HTMLFormElement)) return;
+      if (form.method.toLowerCase() === "get" && !form.hasAttribute("data-online-only")) {
+        if (document.querySelector("[data-cached-workspace]")) {
+          event.preventDefault(); event.stopImmediatePropagation();
+          const params = new URLSearchParams();
+          new FormData(form).forEach((value, name) => { if (typeof value === "string") params.append(name, value); });
+          history.pushState(null, "", location.pathname + "?" + params);
+          window.dispatchEvent(new Event(localNavigation));
+        }
+        return;
+      }
+      if (form.dataset.offlineSafe === "true") return;
       event.preventDefault(); event.stopImmediatePropagation();
       setActionError("הפעולה הזו דורשת חיבור. אפשר לשמור הוצאות וקבצים כטיוטות גם ללא חיבור.");
     };
@@ -89,12 +103,6 @@ export function OfflineRuntime() {
     }
   }, [pathname]);
   useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
-    const ready = (event: MessageEvent) => { if (event.data?.type === "OFFLINE_READY") setReady(true); };
-    navigator.serviceWorker.addEventListener("message", ready);
-    return () => navigator.serviceWorker.removeEventListener("message", ready);
-  }, []);
-  useEffect(() => {
     if (!("serviceWorker" in navigator) || process.env.NODE_ENV !== "production") return;
     void navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" }).then((registration) => {
       const prepare = () => (navigator.serviceWorker.controller ?? registration.active)?.postMessage({ type: "PREPARE_OFFLINE" });
@@ -102,14 +110,14 @@ export function OfflineRuntime() {
     }).catch(() => { setStorageError("הוצאות נשמרות במכשיר, אך טעינה מחדש ללא חיבור עדיין אינה זמינה."); });
   }, []);
   if (pathname === "/login" || pathname.startsWith("/auth/")) return null;
-  const status = storageError || (syncing ? `מסנכרנים ${syncing}…` : offline ? "אין חיבור · השינויים נשמרים במכשיר" : drafts.some((draft) => draft.blocked) ? `${drafts.filter((draft) => draft.blocked).length} טיוטות דורשות בדיקה` : drafts.length ? `${drafts.length} טיוטות ממתינות לסנכרון` : message || (ready ? "מחובר · מוכן לעבודה ללא חיבור" : "מחובר"));
+  if (!offline && !storageError && !actionError && !syncing && !drafts.length) return null;
+  const status = storageError || actionError || (syncing ? `מסנכרנים ${syncing}…` : offline ? "אין חיבור · שמירה במכשיר" : drafts.some((draft) => draft.blocked) ? `${drafts.filter((draft) => draft.blocked).length} טיוטות דורשות בדיקה` : `${drafts.length} טיוטות ממתינות לסנכרון`);
   return <aside className={`connection-status ${offline || storageError ? "is-offline" : ""}`} aria-label="מצב חיבור וסנכרון">
     <div className="connection-line" role="status" aria-live="polite">
-      {syncing ? <LoaderCircle size={16} className="spin" /> : offline ? <WifiOff size={16} /> : drafts.length ? <CloudUpload size={16} /> : <CloudCheck size={16} />}
+      {syncing ? <LoaderCircle size={16} className="spin" /> : offline ? <WifiOff size={16} /> : <CloudUpload size={16} />}
       <span>{status}</span>
       {drafts.length > 0 && <button type="button" className="text-button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>טיוטות ({drafts.length})</button>}
     </div>
-    {actionError && <p role="alert">{actionError}</p>}
     {expanded && <div className="sync-drafts">
       <p>הטיוטות והקבצים שמורים במכשיר זה. השאירו את האפליקציה פתוחה כדי לסנכרן.</p>
       {drafts.map((draft) => <div className="sync-draft" key={draft.operation_id}>

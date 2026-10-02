@@ -1,15 +1,12 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LoaderCircle, Pencil, Plus, X } from "lucide-react";
+import { Pencil, Plus, X } from "lucide-react";
 import type { Category, Expense } from "@/lib/expenses";
+import ExpenseFields from "@/components/expense-fields";
 
-const ExpenseFields = dynamic(() => import("./expense-fields"), {
-  ssr: false,
-  loading: () => <p className="muted" role="status"><LoaderCircle className="spin" size={18} /> טוען את הטופס…</p>,
-});
-
+// Keep the small editor available as soon as the page loads. OCR/PDF engines
+// remain lazy; opening the form must never require a working connection.
 export function ExpenseForm({ categories, merchants, expense }: { categories: Category[]; merchants?: string[]; expense?: Expense }) {
   const [open, setOpen] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
@@ -33,15 +30,14 @@ export function ExpenseForm({ categories, merchants, expense }: { categories: Ca
       <dialog
         ref={dialog}
         className="expense-dialog"
-        aria-label={expense ? "עריכת הוצאה" : "הוצאה חדשה למשק 48"}
+        aria-label={expense ? "עריכת הוצאה" : "הוצאה חדשה"}
         onClose={() => setOpen(false)}
         onClick={(event) => { if (event.target === dialog.current) dialog.current.close(); }}
       >
         {open && <>
           <div className="dialog-header">
             <div>
-              <p className="eyebrow">משק 48 · בית חנניה</p>
-              <h2>{expense ? "עריכת הוצאה" : "הוצאה חדשה למשק 48"}</h2>
+              <h2>{expense ? "עריכת הוצאה" : "הוצאה חדשה"}</h2>
             </div>
             <button type="button" className="icon-button" aria-label="סגירה" onClick={() => dialog.current?.close()}><X size={20} /></button>
           </div>

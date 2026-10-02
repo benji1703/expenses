@@ -39,8 +39,14 @@ test("offline worker caches public shell/assets, never private pages or API resp
   assert.equal(await request("/api/offline/expenses", "cors", "POST"), undefined);
   assert.equal(await request("/login", "navigate"), undefined);
   connected = false;
-  assert.equal((await request("/expenses", "navigate"))?.headers.get("location"), origin + "/offline?view=expenses");
-  assert.match(await (await request("/offline?view=expenses", "navigate"))!.text(), /test.js/);
+  for (const path of ["/", "/expenses?month=2026-10&q=test", "/categories", "/categories/example", "/account", "/household"]) {
+    const response = await request(path, "navigate");
+    assert.equal(response?.status, 200);
+    assert.equal(response?.headers.get("location"), null);
+    assert.equal(response?.url, ""); // Original route remains the response/navigation URL.
+    assert.match(await response!.text(), /test.js/);
+    assert.equal(stored.has(origin + path), false);
+  }
   assert.equal(await (await request("/_next/static/test.js", "cors"))!.text(), "private or asset");
   stored.delete(origin + "/offline");
   assert.equal((await request("/offline", "navigate"))?.status, 503);

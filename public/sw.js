@@ -1,5 +1,5 @@
 /* Cache only the public offline shell/assets. Authenticated HTML, RSC, auth and API responses never enter this cache. */
-const CACHE = "meshek48-shell-v1";
+const CACHE = "meshek48-shell-v2";
 const ASSETS = /^\/(?:_next\/static\/|fonts\/|tesseract\/|pdfjs\/|design\/|icons\/)/;
 const WORKSPACE = /^\/(?:$|expenses\/?$|categories(?:\/[^/]+)?\/?$|guide\/?$|account\/?$|household\/?$)/;
 let preparing;
@@ -59,11 +59,11 @@ self.addEventListener("fetch", (event) => {
         const response = await fetch(request);
         if (response.status < 500) return response;
       } catch { /* Show a local workspace on connection loss. */ }
-      if (url.pathname !== "/offline") {
-        const view = url.pathname.startsWith("/categories") ? "categories" : url.pathname === "/" ? "overview" : url.pathname.slice(1);
-        return Response.redirect(new URL("/offline?view=" + encodeURIComponent(view), self.location.origin), 302);
-      }
-      return (await (await caches.open(CACHE)).match("/offline")) ?? new Response("Offline workspace is not ready. Reconnect and open the app once.", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+      const shell = await (await caches.open(CACHE)).match("/offline");
+      // Serve the public shell at the requested address, including its filters.
+      // A new Response drops the shell's /offline response URL: Safari resolves
+      // navigation and relative links against the original workspace URL.
+      return shell ? new Response(await shell.arrayBuffer(), { status: 200, headers: shell.headers }) : new Response("Offline workspace is not ready. Reconnect and open the app once.", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } });
     })());
   }
 });

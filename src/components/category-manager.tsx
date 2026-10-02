@@ -3,9 +3,10 @@
 import { saveCategory, type ActionState } from "@/app/actions";
 import type { Category } from "@/lib/expenses";
 import { LoaderCircle, Pencil, Plus, Tags, X } from "lucide-react";
-import Link from "next/link";
+import { AppLink } from "@/components/app-link";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { isDisconnected, subscribeConnection } from "@/lib/connection-state";
 
 const initial: ActionState = {};
 
@@ -93,22 +94,22 @@ function CategoryDialog({
 export function CategoryManager({
   categories,
   canManage,
+  offline = false,
 }: {
   categories: Category[];
   canManage: boolean;
+  offline?: boolean;
 }) {
   const [editing, setEditing] = useState<Category | null | undefined>();
+  const disconnected = useSyncExternalStore(subscribeConnection, isDisconnected, () => false);
+  const unavailable = offline || disconnected;
   const close = () => setEditing(undefined);
 
   return (
     <section className="category-directory-section" aria-label="קטגוריות הוצאות">
       <div className="category-directory-heading">
-        <div>
-          <p className="eyebrow">סיווג הוצאות</p>
-          <h2>קטגוריות הפרויקט</h2>
-        </div>
         {canManage && (
-          <button className="primary" onClick={() => setEditing(null)}>
+          <button className="primary" disabled={unavailable} title={unavailable ? "נדרש חיבור" : undefined} onClick={() => setEditing(null)}>
             <Plus size={17} /> הוספת קטגוריה
           </button>
         )}
@@ -117,17 +118,18 @@ export function CategoryManager({
         <div className="category-directory">
           {categories.map((category) => (
             <article className="category-admin-card" key={category.id}>
-              <Link className="category-card-link" href={`/categories/${category.id}`}>
+              <AppLink className="category-card-link" href={`/categories/${category.id}`}>
                 <span className="legend-dot" style={{ background: category.color }} />
                 <span>
                   <strong>{category.name}</strong>
-                  <small>צפייה בהוצאות</small>
                 </span>
-              </Link>
+              </AppLink>
               {canManage && (
                 <button
                   className="icon-button"
                   type="button"
+                  disabled={unavailable}
+                  title={unavailable ? "נדרש חיבור" : undefined}
                   aria-label={`עריכת הקטגוריה ${category.name}`}
                   onClick={() => setEditing(category)}
                 >

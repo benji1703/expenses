@@ -1,4 +1,4 @@
-import { AppLink } from "@/components/app-link";
+import { WorkspaceNavigation } from "@/components/workspace-navigation";
 import { OfflineSnapshot } from "@/components/offline-snapshot";
 import { BrandMark } from "@/components/brand-mark";
 import { CategoryManager } from "@/components/category-manager";
@@ -6,28 +6,22 @@ import { ExportPanel } from "@/components/export-panel";
 import { ExpenseForm } from "@/components/expense-form";
 import { categoryColor } from "@/lib/design";
 import { RenovationGuide } from "@/components/guide";
-import { stages, paymentStatuses } from "@/lib/renovation-guide";
-import Link from "next/link";
+import { ExpenseTable } from "@/components/expense-table";
+import { AppLink } from "@/components/app-link";
 import { redirect } from "next/navigation";
 import {
-  Sprout,
-  LayoutDashboard,
   ReceiptText,
-  Users,
   LogOut,
   ArrowUpRight,
   Search,
   Paperclip,
   Wallet,
   Tags,
-  BookOpen,
   ChevronLeft,
   ChevronRight,
-  Fingerprint,
 } from "lucide-react";
 import { requireMember } from "@/lib/auth";
 import {
-  DeleteExpense,
   InviteForm,
   MemberAccess,
 } from "@/components/forms";
@@ -175,41 +169,14 @@ export default async function Home({
         דילוג לתוכן הפרויקט
       </a>
       <aside className="sidebar">
-        <Link href="/" className="brand">
+        <AppLink href="/" className="brand">
           <span className="brand-icon">
             <BrandMark />
           </span>
           משק 48
-        </Link>
+        </AppLink>
         <p className="sidebar-label">פרויקט השיפוץ</p>
-        <nav aria-label="ניווט ראשי">
-          <AppLink className={`nav-link ${section === "overview" ? "active" : ""}`} href="/">
-            <LayoutDashboard size={18} />
-            סקירה
-          </AppLink>
-          <AppLink className={`nav-link ${section === "expenses" ? "active" : ""}`} href="/expenses">
-            <ReceiptText size={18} />
-            הוצאות
-          </AppLink>
-          <AppLink className={`nav-link ${section === "categories" || section === "category" ? "active" : ""}`} href="/categories">
-            <Tags size={18} />
-            קטגוריות
-          </AppLink>
-          <AppLink className={`nav-link ${section === "guide" ? "active" : ""}`} href="/guide">
-            <BookOpen size={18} />
-            מדריך
-          </AppLink>
-          {member.role === "admin" && (
-            <AppLink className={`nav-link ${section === "household" ? "active" : ""}`} href="/household">
-              <Users size={18} />
-              גישה
-            </AppLink>
-          )}
-          <AppLink className={`nav-link ${section === "account" ? "active" : ""}`} href="/account">
-            <Fingerprint size={18} />
-            החשבון שלי
-          </AppLink>
-        </nav>
+        <WorkspaceNavigation role={member.role} />
         <div className="sidebar-bottom">
           <div className="profile">
             <span className="avatar">
@@ -235,19 +202,13 @@ export default async function Home({
       </aside>
       <main className="dashboard" id="main-content" tabIndex={-1}>
         {(section === "overview" || section === "categories") && <section className="page-heading">
-          <div>
-            <p className="eyebrow">משק 48 · בית חנניה</p>
-            <h1>{section === "categories" ? <>הוצאות לפי תחום</> : <>תקציב השיפוץ של משק 48</>}</h1>
-            <p className="muted">
-              מעקב אחר תשלומי רמ״י, תכנון, רישוי, קבלנים וחומרי בנייה.
-            </p>
-          </div>
-          {canWrite && <ExpenseForm categories={categories} merchants={merchants} />}
+          <h1>{section === "categories" ? "קטגוריות" : "סקירה"}</h1>
+          {section === "overview" && canWrite && <ExpenseForm categories={categories} merchants={merchants} />}
         </section>}
         {section === "categories" && <CategoryManager categories={categories} canManage={member.role === "admin"} />}
         {section !== "guide" && section !== "categories" && section !== "household" && section !== "account" && <>
-        {section !== "overview" && section !== "category" && <div className="route-heading"><p className="eyebrow">פרויקט השיפוץ · בית חנניה</p><h1>{section === "expenses" ? <>הוצאות ותשלומים<span>.</span></> : null}</h1><p className="muted">כל הדרישות, הקבלות והאומדנים במקום אחד.</p></div>}
-        {section === "category" && <div className="route-heading"><p className="eyebrow"><Link href="/categories">קטגוריות</Link> · קטגוריה</p><h1>{categoryMap.get(categoryId)?.name ?? "הוצאות"}<span>.</span></h1><p className="muted">הוצאות, תשלומים ואסמכתאות בתחום זה.</p></div>}
+        {section !== "overview" && section !== "category" && <div className="route-heading"><h1>הוצאות</h1></div>}
+        {section === "category" && <div className="route-heading"><p className="eyebrow"><AppLink href="/categories">קטגוריות</AppLink> · קטגוריה</p><h1>{categoryMap.get(categoryId)?.name ?? "הוצאות"}</h1></div>}
         <div className="period-bar">
           <h2>
             {section === "overview" ? "סקירה" : section === "category" ? categoryMap.get(categoryId)?.name ?? "קטגוריה" : "הוצאות ותשלומים"} <span>/</span> <span className="muted">{monthLabel}</span>
@@ -266,9 +227,9 @@ export default async function Home({
             />
             <button className="secondary">הצגה</button>
             {month && (
-              <Link className="text-button" href="/">
+              <AppLink className="text-button" href="/">
                 כל הפרויקט
-              </Link>
+              </AppLink>
             )}
           </form>
         </div>
@@ -318,19 +279,14 @@ export default async function Home({
             <span className="section-icon">
               <Tags size={18} />
             </span>
-            <h2>לאן הולך תקציב השיפוץ?</h2>
-            <p className="muted">
-              מהסדרת הזכויות ועד גמרים ותשתיות.
-              <br />
-              עלויות לפי קטגוריה, כולל אומדנים.
-            </p>
+            <h2>עלויות לפי קטגוריה</h2>
             <span className="subtle-tag">
               {totals.has("ILS")
                 ? "ILS"
                 : (totals.keys().next().value ?? "ILS")}{" "}
               · {monthLabel}
             </span>
-            <Link className="text-button breakdown-link" href="/categories">לכל הקטגוריות וההוצאות <ArrowUpRight size={15} /></Link>
+            <AppLink className="text-button breakdown-link" href="/categories">לכל הקטגוריות וההוצאות <ArrowUpRight size={15} /></AppLink>
           </div>
           <div className="chart-area">
             <div
@@ -349,20 +305,18 @@ export default async function Home({
             <div className="legend">
               {categoryTotals.length ? (
                 categoryTotals.map((c) => (
-                  <Link key={c.id} href={`/categories/${c.id}`}>
+                  <AppLink key={c.id} href={`/categories/${c.id}`}>
                     <span
                       className="legend-dot"
                       style={{ background: c.color }}
                     />
                     <span>{c.name}</span>
                     <strong>{Math.round((c.total / chartTotal) * 100)}%</strong>
-                  </Link>
+                  </AppLink>
                 ))
               ) : (
                 <p className="muted">
-                  ההוצאה הראשונה
-                  <br />
-                  תתחיל את התמונה.
+                  אין הוצאות להצגה
                 </p>
               )}
             </div>
@@ -371,10 +325,7 @@ export default async function Home({
         {(section === "expenses" || section === "category") && <section className="ledger" id="ledger">
           <div className="section-heading">
             <div>
-              <h2>יומן ההוצאות של הנחלה</h2>
-              <p className="muted">
-                דרישות תשלום, חשבוניות, קבלות ואומדנים — יחד.
-              </p>
+              <h2>רשימת הוצאות</h2>
             </div>
             <span className="count-tag">
               {expensesResult.count ?? 0} הוצאות
@@ -408,106 +359,12 @@ export default async function Home({
             </select>
             <button className="secondary">סינון</button>
             {(search || categoryId) && (
-              <Link className="text-button" href={`/?month=${month}#ledger`}>
+              <AppLink className="text-button" href={`/?month=${month}#ledger`}>
                 ניקוי
-              </Link>
+              </AppLink>
             )}
           </form>
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>ספק / רשות</th>
-                  <th>קטגוריה</th>
-                  <th>תאריך</th>
-                  <th>סטטוס</th>
-                  <th>אסמכתה</th>
-                  <th className="align-right">סכום</th>
-                  <th>
-                    <span className="sr-only">פעולות</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {expenses.map((e) => {
-                  const category = categoryMap.get(e.category_id);
-                  return (
-                    <tr key={e.id}>
-                      <td>
-                        <strong>{e.merchant}</strong>
-                        <small className="expense-note">
-                          {stages[e.stage]}
-                          {e.reference ? ` · ${e.reference}` : ""}
-                        </small>
-                        {e.notes && (
-                          <small className="expense-note" title={e.notes}>
-                            {e.notes}
-                          </small>
-                        )}
-                      </td>
-                      <td>
-                        <span className="category-badge">
-                          <span style={{ background: category?.color }} />
-                          {category?.name}
-                        </span>
-                      </td>
-                      <td className="date-cell">
-                        {new Date(`${e.spent_on}T12:00:00Z`).toLocaleDateString(
-                          "he-IL",
-                          { month: "short", day: "numeric" },
-                        )}
-                      </td>
-                      <td>
-                        <span className={`payment-badge ${e.payment_status}`}>
-                          {paymentStatuses[e.payment_status]}
-                        </span>
-                        {e.due_on && (
-                          <small className="expense-note">
-                            לתשלום עד{" "}
-                            {new Date(
-                              `${e.due_on}T12:00:00Z`,
-                            ).toLocaleDateString("he-IL")}
-                          </small>
-                        )}
-                      </td>
-                      <td>
-                        {(receiptsByExpense.get(e.id)?.length ?? 0) > 0 ? (
-                          <div className="stack" style={{ gap: 4 }}>
-                            {receiptsByExpense.get(e.id)!.map((receipt, index) => (
-                              <a className="receipt-link" key={receipt.id} href={`/receipts/${e.id}/${receipt.id}`} target="_blank" rel="noopener noreferrer">
-                                <Paperclip size={14} />
-                                {`קובץ ${index + 1}`}
-                                <ArrowUpRight size={13} />
-                              </a>
-                            ))}
-                          </div>
-                        ) : e.receipt_path ? (
-                          <a className="receipt-link" href={`/receipts/${e.id}`} target="_blank" rel="noopener noreferrer">
-                            <Paperclip size={14} /> הצגה <ArrowUpRight size={13} />
-                          </a>
-                        ) : (
-                          <span className="muted">—</span>
-                        )}
-                      </td>
-                      <td className="align-right amount-cell">
-                        {money(Number(e.amount), e.currency)}
-                      </td>
-                      <td>
-                        {canWrite && (e.created_by === user.id ||
-                          member.role === "admin") && (
-                          <div className="row-actions">
-                            <ExpenseForm categories={categories} merchants={merchants} expense={e} />
-                            <DeleteExpense expense={e} />
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {!expenses.length && !failed && (
+          <ExpenseTable expenses={expenses} categories={categories} receiptsByExpense={receiptsByExpense} role={member.role} owner={user.id} emptyState={!failed && (
             <div className="empty-state">
               <span className="empty-icon">
                 <ReceiptText size={28} />
@@ -515,18 +372,14 @@ export default async function Home({
               <h3>
                 {search || categoryId
                   ? "לא נמצאו הוצאות מתאימות."
-                  : "הפרויקט מתחיל כאן."}
+                  : "אין הוצאות להצגה"}
               </h3>
-              <p className="muted">
-                {search || categoryId
-                  ? "נסו חיפוש או קטגוריה אחרים."
-                  : "הוסיפו דרישת תשלום, חשבונית או אומדן ראשון לנחלה."}
-              </p>
+              {(search || categoryId) && <p className="muted">נסו חיפוש או קטגוריה אחרים.</p>}
               {!search && !categoryId && canWrite && (
                 <ExpenseForm categories={categories} merchants={merchants} />
               )}
             </div>
-          )}
+          )} />
           <div className="table-footer">
             <span>
               מציג {expenses.length ? (page - 1) * 25 + 1 : 0}–
@@ -535,32 +388,31 @@ export default async function Home({
             </span>
             <div>
               {page > 1 && (
-                <Link
+                <AppLink
                   className="icon-button"
                   href={pageLink(page - 1)}
-                  aria-label="העמוד הקודם"
+                  ariaLabel="העמוד הקודם"
                 >
                   <ChevronLeft size={17} />
-                </Link>
+                </AppLink>
               )}
               {page * 25 < (expensesResult.count ?? 0) && (
-                <Link
+                <AppLink
                   className="icon-button"
                   href={pageLink(page + 1)}
-                  aria-label="העמוד הבא"
+                  ariaLabel="העמוד הבא"
                 >
                   <ChevronRight size={17} />
-                </Link>
+                </AppLink>
               )}
             </div>
-            <span>עודכנו לפי התאריך והסכום.</span>
           </div>
         </section>}
         </>}
         {member.role === "admin" && section === "household" && (
           <section className="household-section" id="household">
             <div>
-              <h2>הפרויקט שלנו, יחד.</h2>
+              <h2>גישה</h2>
               <p className="muted">
                 רק כתובות שאושרו יכולות לצפות בהוצאות ובמסמכים.
               </p>
@@ -598,16 +450,12 @@ export default async function Home({
         {section === "guide" && <RenovationGuide />}
         {section === "account" && <div className="account-content">
           <div className="route-heading account-heading">
-            <p className="eyebrow">החשבון שלי · משק 48</p>
-            <h1>כניסה מאובטחת<span>.</span></h1>
-            <p className="muted">הוסיפו Passkey כדי להיכנס עם Face ID או Touch ID. קישור האימייל ימשיך להיות זמין כגיבוי.</p>
+            <h1>החשבון שלי</h1>
           </div>
           <AccountPasskeys />
         </div>}
         <footer className="dashboard-footer">
-          <Sprout size={16} />
-          משק 48 · בית חנניה
-          <span>ניהול תקציב, הוצאות ומסמכי השיפוץ</span>
+          משק 48
           <a href="https://house.arbibe.dev" target="_blank" rel="noopener noreferrer">לפרויקט הבית <ArrowUpRight size={14} /></a>
         </footer>
       </main>

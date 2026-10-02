@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { OfflineRuntime } from "@/components/offline-runtime";
+import { NavigationState } from "@/components/navigation-state";
+import { WorkspaceMode } from "@/components/workspace-mode";
 export const metadata: Metadata = {
   title: "משק 48 · ניהול תקציב השיפוץ",
   description: "מעקב אחר תשלומי רמ״י, תכנון, רישוי, קבלנים ומסמכי השיפוץ בבית חנניה.",
@@ -23,7 +25,7 @@ export default function RootLayout({
         <link rel="preload" href="/fonts/heebo-hebrew.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
         <link rel="preload" href="/fonts/heebo-latin.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
       </head>
-      <body>{children}<OfflineRuntime /></body>
+      <body><NavigationState><WorkspaceMode>{children}</WorkspaceMode><OfflineRuntime /></NavigationState></body>
     </html>
   );
 }

@@ -3,9 +3,12 @@
 import { useEffect } from "react";
 import { saveSnapshot } from "@/lib/offline-store";
 import type { OfflineSnapshot as Snapshot } from "@/lib/offline-types";
+import { useNavigationState } from "@/components/navigation-state";
 
 export function OfflineSnapshot({ snapshot }: { snapshot: Snapshot }) {
+  const { identify } = useNavigationState();
   useEffect(() => {
+    identify(snapshot.profile);
     void saveSnapshot(snapshot).catch(() => {});
     // Prepare only the small editor, after first paint; OCR/PDF engines remain on demand.
     const timer = window.setTimeout(() => {
@@ -16,6 +19,6 @@ export function OfflineSnapshot({ snapshot }: { snapshot: Snapshot }) {
       }
     }, 3_000);
     return () => window.clearTimeout(timer);
-  }, [snapshot]);
+  }, [snapshot, identify]);
   return null;
 }
