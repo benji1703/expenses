@@ -9,7 +9,7 @@ import { adminClient } from "@/lib/supabase/admin";
 import { requireMember } from "@/lib/auth";
 import { authStatusFor } from "@/lib/access-server";
 import { expenseSchema, receiptExtension } from "@/lib/expenses";
-export type ActionState = { error?: string; success?: string };
+export type ActionState = { error?: string; success?: string; category?: { id: string; name: string; color: string } };
 export async function login(
   _previous: ActionState,
   form: FormData,
@@ -300,9 +300,9 @@ export async function saveCategory(
         .from("categories")
         .update({ name, color })
         .eq("id", id)
-        .select("id")
+        .select("id,name,color")
         .maybeSingle()
-    : await admin.from("categories").insert({ name, color }).select("id").single();
+    : await admin.from("categories").insert({ name, color }).select("id,name,color").single();
   if (result.error) {
     if (result.error.code === "23505")
       return { error: "כבר קיימת קטגוריה בשם הזה." };
@@ -313,5 +313,5 @@ export async function saveCategory(
   for (const path of ["/", "/categories", "/expenses", "/guide"]) {
     revalidatePath(path);
   }
-  return { success: id ? "הקטגוריה עודכנה." : "הקטגוריה נוספה." };
+  return { success: id ? "הקטגוריה עודכנה." : "הקטגוריה נוספה.", category: result.data };
 }

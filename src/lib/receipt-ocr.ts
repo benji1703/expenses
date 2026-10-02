@@ -20,6 +20,7 @@ export type ReceiptFields = {
   notes?: string;
   amount_candidates: string[];
   warnings: string[];
+  zero_total?: boolean;
 };
 export type ReceiptContext = {
   categories?: { id: string; name: string }[];
@@ -63,16 +64,19 @@ function currency(line: string): ReceiptFields["currency"] {
   if (/\bGBP\b|£/.test(line)) return "GBP";
 }
 function totalScore(line: string) {
+  if (/(?:ה?תשלום|שולם|התקבל).*בסך/i.test(line)) return 105;
   if (/(?:סה\s*["']?\s*כ|סך\s*(?:ה?כל|ה?כול)|סכום).*(?:התקבל|שולם)|(?:סכום\s*(?:שהתקבל|ששולם))|\bamount\s*paid\b/i.test(line)) return 110;
+  if (/(?:סה\s*["']?\s*כ|סך\s*(?:ה?כל|ה?כול)|ה?סכום).*לתשלום|\bamount\s*due\b/i.test(line)) return 105;
+  if (/somme.*payer.*ttc|total.*ttc|net.*payer/i.test(line)) return 105;
   if (/(?:סה\s*["']?\s*כ|סך\s*(?:ה?כל|ה?כול)|סכום).*(?:לתשלום|כולל\s*מע["']?מ)|סכום\s*סופי|\bgrand\s*total\b|\bamount\s*due\b/i.test(line)) return 100;
   if (/לתשלום|סה\s*["']?\s*כ|סך\s*(?:ה?כל|ה?כול)|\btotal\b/i.test(line)) return 90;
   if (/שולם\s*(?:במזומן|באשראי)|סכום\s*הקבלה/i.test(line)) return 80;
   return 0;
 }
-const nonTotal = /לפני\s*מע["']?מ|ללא\s*מע["']?מ|סכום\s*ביניים|\bsub\s*total\b|הנחה|עודף|יתרה\s*קודמת|\bchange\b|\bdiscount\b/i;
+const nonTotal = /לפני\s*מע["']?מ|ללא\s*מע["']?מ|חייב\s*ב?מע["']?מ|סכום\s*ביניים|\bsub\s*total\b|הנחה|עודף|יתרה\s*קודמת|\bchange\b|\bdiscount\b|קוט["']?ש|kwh|(?:עמלה|סכומים\s*מעל)|\bHT\b|\bTVA\b/i;
 const identifiers = /(?:(?:^|\s)(?:ח["']?פ|ע["']?מ)(?=\s|:|$)|עוסק\s*(?:מורשה|פטור)|מספר\s*(?:עסק|מסמך|חשבונית|קבלה|כרטיס)|טלפון|טל[.:]|פקס|ת["']?ז|\b(?:phone|vat\s*id|tax\s*id)\b)/i;
 
-function monetaryValues(line: string): string[] {
+function monetaryValues(line: string, allowZero = false): string[] {
   const result: string[] = [];
   const pattern = /\d{1,3}(?:[ ,.]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?/g;
   for (const match of line.matchAll(pattern)) {
@@ -80,7 +84,10 @@ function monetaryValues(line: string): string[] {
     const before = line.slice(Math.max(0, start - 1), start);
     const after = line.slice(start + match[0].length);
     if (/[\d/.,\-]/.test(before) || /^[\d/.,\-]|^\s*%/.test(after)) continue;
-    const amount = parseReceiptAmount(match[0]);
+    // A trailing OCR glyph can turn 361.95 into 361.950. A lone dot followed
+    // by three digits is ambiguous; never silently turn it into 361,950.
+    if (/^\d{1,3}\.\d{3}$/.test(match[0])) continue;
+    const amount = allowZero && /^0+(?:[.,]0{1,2})?$/.test(match[0]) ? "0.00" : parseReceiptAmount(match[0]);
     if (amount) result.push(amount);
   }
   return result;
@@ -88,16 +95,18 @@ function monetaryValues(line: string): string[] {
 
 function findAmount(lines: string[]) {
   const candidates: { amount: string; score: number; currency?: ReceiptFields["currency"] }[] = [];
+  let finalLabel = false;
   lines.forEach((line, index) => {
     if (nonTotal.test(line) || identifiers.test(line)) return;
     const score = totalScore(line);
+    if (score >= 100) finalLabel = true;
     if (!score && /מע["']?מ|\bvat\b|מס\s*ערך\s*מוסף/i.test(line)) return;
-    let values = monetaryValues(line);
+    let values = monetaryValues(line, !!score);
     let source = line;
     if (score && !values.length) {
       // A total label and its value are often printed on separate lines.
       source = lines[index + 1] ?? "";
-      if (/^[\d\s.,₪$€£"'שחA-Z]+$/i.test(source)) values = monetaryValues(source);
+      if (/^[\d\s.,₪$€£"'שחA-Z]+$/i.test(source)) values = monetaryValues(source, true);
     }
     if (score) {
       for (const amount of values) candidates.push({ amount, score, currency: currency(line + " " + source) });
@@ -107,9 +116,10 @@ function findAmount(lines: string[]) {
     }
   });
   const bestScore = Math.max(0, ...candidates.map((item) => item.score));
-  const best = candidates.filter((item) => item.score === bestScore);
+  const best = candidates.filter((item) => item.score === bestScore && (!finalLabel || item.score >= 80));
   const amounts = [...new Set(best.map((item) => item.amount))];
-  return { amount: amounts.length === 1 ? amounts[0] : undefined, currency: amounts.length === 1 ? best[0]?.currency : undefined, candidates: amounts.length > 1 ? amounts : [] };
+  const zero = amounts.includes("0.00");
+  return { amount: amounts.length === 1 && !zero ? amounts[0] : undefined, currency: amounts.length === 1 && !zero ? best[0]?.currency : undefined, zero, candidates: amounts.length > 1 ? amounts.filter((value) => value !== "0.00") : [] };
 }
 
 function documentType(text: string): ReceiptFields["document_type"] {
@@ -120,7 +130,7 @@ function documentType(text: string): ReceiptFields["document_type"] {
   if (/הצעת\s*מחיר|\bquotation\b|\bestimate\b|^אומדן(?:\s|$)/im.test(header)) return "quote";
   if (/דרישת\s*תשלום|חשבונ?ית\s*עסקה|חשבון\s*עסקה|\bpayment\s*request\b|\bpro\s*forma\b/i.test(header)) return "payment_request";
   if (/(?:^|\n)\s*(?:קבלה|receipt)(?:\s|[#:״"\-]|$)/i.test(header)) return "receipt";
-  if (/חשבונית(?:\s*מס)?|\binvoice\b/i.test(header)) return "invoice";
+  if (/חשבונית(?:\s*מס)?|\binvoice\b|\bfacture\b/i.test(header)) return "invoice";
 }
 
 function editDistance(a: string, b: string) {
@@ -141,7 +151,7 @@ function merchantName(lines: string[], known: string[]) {
     if (/^(?:לכבוד|לקוח|שם\s*הלקוח|bill\s*to|customer)(?:\s|:|$)/i.test(line)) break;
     const labelled = line.match(explicit);
     const name = labelled ? labelled[1].trim() : line;
-    if (name.length < 3 || name.length > 160 || !/[א-תa-z]/i.test(name) || (!labelled && (excluded.test(name) || identifiers.test(name) || nonTotal.test(name) || totalScore(name) || currencyPattern.test(name) || /^\d/.test(name) || /[@]|https?:|\d{4,}/i.test(name)))) continue;
+    if (name.length < 3 || name.length > 160 || !/[א-תa-z]/i.test(name) || (!labelled && (excluded.test(name) || identifiers.test(name) || nonTotal.test(name) || totalScore(name) || currencyPattern.test(name) || /^\d/.test(name) || /[@]|https?:|www\.|\bsite\s*internet\b|\d{4,}/i.test(name)))) continue;
     let score = labelled ? 100 : 30 - index;
     if (/בע["']?מ|\bltd\b|\binc\b/i.test(name)) score += 20;
     const normalized = words(name);
@@ -203,15 +213,18 @@ function matchCategory(text: string, categories: NonNullable<ReceiptContext["cat
 
 function dates(lines: string[]) {
   const found: { date: string; due: boolean; score: number }[] = [];
-  for (const line of lines) {
-    const due = /מועד\s*(?:ל?תשלום|פירעון)|לתשלום\s*עד|תאריך\s*(?:פירעון|לתשלום)|\bdue\b/i.test(line);
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    const previous = [...lines.slice(Math.max(0, index - 2), index)].reverse().find((item) => /תאריך|\bdue\b|(?:לתשלום|לשלם|חשבון).*עד/i.test(item)) ?? "";
+    const label = /תאריך|\bdue\b|(?:לתשלום|לשלם|חשבון).*עד/i.test(previous) ? previous + " " + line : line;
+    const due = /מועד\s*(?:ל?תשלום|פירעון)|(?:לתשלום|לשלם|חשבון).*עד|תאריך\s*(?:פירעון|לתשלום)|\bdue\b/i.test(label);
     for (const match of line.matchAll(/\b(\d{4})[/.\-](\d{1,2})[/.\-](\d{1,2})\b|\b(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})\b/g)) {
       const year = match[1] ? +match[1] : +match[6] + (match[6].length === 2 ? 2000 : 0);
       const month = +(match[2] ?? match[5]);
       const day = +(match[3] ?? match[4]);
       const date = new Date(Date.UTC(year, month - 1, day));
       if (year < 2000 || year > 2100 || date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) continue;
-      found.push({ date: date.toISOString().slice(0, 10), due, score: /תאריך|\bdate\b/i.test(line) ? 2 : 1 });
+      found.push({ date: date.toISOString().slice(0, 10), due, score: /תאריך\s*(?:עריכת|הפקת|הוצאה)|\bissue\s*date\b/i.test(label) ? 3 : /תאריך|\bdate\b/i.test(label) ? 2 : 1 });
     }
   }
   function select(due: boolean) {
@@ -231,28 +244,65 @@ export function extractReceiptFields(text: string, context: ReceiptContext = {})
   const labelledReference = normalized.match(/(?:מספר\s*(?:חשבונית|קבלה|מסמך|שובר)|(?:חשבונית(?:\s*מס)?(?:\s*[/\-]\s*קבלה)?|קבלה)\s*(?:מס["']?\s*\.?|מספר|#)|\b(?:invoice|receipt)\s*(?:no\.?|number|#))[^\S\n]*[:\-]?[^\S\n]*([\d][\dA-Z/\-]{0,39})/i)?.[1];
   // OCR frequently turns מס׳ into Latin letters; only fall back on a document heading.
   const headerReferences = lines.filter((line) => /^(?:חשבונית|קבלה|invoice|receipt)(?:\s|$)/i.test(line) && !currencyPattern.test(line))
-    .flatMap((line) => [...line.matchAll(/(?:^|[^\d/.\-])(\d{3,20})(?![\d/.\-])/g)].map((match) => match[1]));
+    .flatMap((line) => [...line.matchAll(/(?:^|[^\d/.\-])(\d{3,20}(?:-\d{3,20})?)(?![\d/.\-])/g)].map((match) => match[1]));
   const uniqueReferences = [...new Set(headerReferences)];
   const reference = labelledReference ?? (uniqueReferences.length === 1 ? uniqueReferences[0] : undefined);
   const warnings: string[] = [];
   if (amount.candidates.length) warnings.push("זוהו כמה סכומים אפשריים. בחרו את הסכום הנכון מהמסמך.");
+  else if (amount.zero) warnings.push("המסמך מציג סכום אפס. אין סכום חיובי למילוי אוטומטי.");
   else if (!amount.amount) warnings.push("הסכום הסופי לא זוהה. מלאו אותו לפי המסמך.");
   if (type === "invoice") warnings.push("חשבונית אינה אישור תשלום. בדקו את סטטוס התשלום.");
   if (!type) warnings.push("סוג המסמך לא זוהה. בדקו את סטטוס התשלום.");
+  const conditionalReceipt = /(?:משמש|תשמש|מהווה).*קבלה.*(?:רק\s*לאחר|לאחר\s*(?:הטבעת|תשלום))|קבלה.*(?:מותנית|לאחר\s*התשלום)/i.test(normalized);
+  if (conditionalReceipt) warnings.push("המסמך משמש קבלה רק לאחר תשלום. בדקו אם שולם.");
   const merchant = merchantName(lines, context.merchants ?? []);
   if (!merchant) warnings.push("שם הספק לא זוהה. מלאו אותו לפי המסמך.");
   return {
     merchant, amount: amount.amount,
-    currency: amount.currency, ...dates(lines), reference,
+    currency: amount.currency ?? currency(normalized), ...dates(lines), reference,
     document_type: type,
-    payment_status: type === "receipt" || type === "tax_receipt" ? "paid" : type === "payment_request" ? "unpaid" : type === "quote" ? "planned" : undefined,
+    payment_status: conditionalReceipt && (type === "receipt" || type === "tax_receipt") ? "unpaid" : type === "receipt" || type === "tax_receipt" ? "paid" : type === "payment_request" ? "unpaid" : type === "quote" ? "planned" : undefined,
     category_id: matchCategory(normalized, context.categories ?? []),
-    notes: text.trim().slice(0, 2000) || undefined,
     amount_candidates: amount.candidates, warnings,
+    ...(amount.zero ? { zero_total: true } : {}),
   };
 }
 
 export type PdfTextItem = { str: string; dir: string; transform: number[]; width: number; height: number };
+
+export type OcrLine = { text: string; bbox: { x0: number; y0: number; x1: number; y1: number } };
+/** OCR engines read columns independently. Rejoin aligned labels and values first. */
+export function receiptOcrText(lines: OcrLine[]): string {
+  const rows: { center: number; height: number; lines: OcrLine[] }[] = [];
+  for (const line of [...lines].sort((a, b) => a.bbox.y0 - b.bbox.y0)) {
+    if (!line.text.trim()) continue;
+    const center = (line.bbox.y0 + line.bbox.y1) / 2;
+    const height = line.bbox.y1 - line.bbox.y0;
+    const row = rows.find((candidate) => Math.abs(candidate.center - center) <= Math.max(3, Math.min(candidate.height, height) * 0.5));
+    if (row) row.lines.push(line);
+    else rows.push({ center, height, lines: [line] });
+  }
+  return rows.map((row) => {
+    const rtl = row.lines.some((line) => /[א-ת]/.test(line.text));
+    return row.lines.sort((a, b) => rtl ? b.bbox.x1 - a.bbox.x1 : a.bbox.x0 - b.bbox.x0)
+      .map((line) => line.text.trim()).join(" ");
+  }).join("\n");
+}
+
+export function receiptImageSize(width: number, height: number) {
+  const scale = Math.min(3, Math.max(1, 1800 / width), Math.sqrt(6_000_000 / (width * height)));
+  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
+}
+
+export function receiptFieldQuality(fields: ReceiptFields) {
+  return (fields.amount ? 4 : 0) + (fields.merchant ? 2 : 0) + (fields.document_type ? 1 : 0) + (fields.spent_on ? 1 : 0);
+}
+
+/** Skip line items and later pages once the expense's primary fields are present. */
+export function receiptFieldsComplete(fields: ReceiptFields) {
+  return !!fields.zero_total || (!!fields.amount && !!fields.merchant && !!fields.document_type);
+}
+
 /** Reconstruct positioned PDF text without reversing Hebrew characters or decimal digits. */
 export function receiptPdfText(items: PdfTextItem[]): string {
   const rows: { y: number; height: number; items: PdfTextItem[] }[] = [];

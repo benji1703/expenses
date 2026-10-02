@@ -206,7 +206,7 @@ export default async function Home({
       <main className="dashboard" id="main-content" tabIndex={-1}>
         {(section === "overview" || section === "categories") && <section className="page-heading">
           <h1>{section === "categories" ? "קטגוריות" : "סקירה"}</h1>
-          {section === "overview" && canWrite && <ExpenseForm categories={categories} merchants={merchants} />}
+          {section === "overview" && canWrite && <ExpenseForm categories={categories} merchants={merchants} canManageCategories={member.role === "admin"} />}
         </section>}
         {section === "categories" && <CategoryManager categories={categories} canManage={member.role === "admin"} />}
         {section !== "guide" && section !== "categories" && section !== "household" && section !== "account" && <>
@@ -333,7 +333,7 @@ export default async function Home({
             </div>
             <div className="section-heading-actions"><span className="count-tag">
               {expensesResult.count ?? 0} הוצאות
-            </span>{canWrite && <ExpenseForm categories={categories} merchants={merchants} />}</div>
+            </span>{canWrite && <ExpenseForm categories={categories} merchants={merchants} canManageCategories={member.role === "admin"} />}</div>
           </div>
           <ExportPanel key={`${month}:${categoryId}:${search}`} categories={categories} filters={{ from: month ? `${month}-01` : "", to: month ? new Date(Date.UTC(year, m, 0)).toISOString().slice(0, 10) : "", category: categoryId, q: search }} />
           <form className="filters">

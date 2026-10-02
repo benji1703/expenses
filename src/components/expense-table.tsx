@@ -125,7 +125,7 @@ export function ExpenseTable({ expenses, categories, receiptsByExpense, role, ow
                         {canWrite && !pendingIds.has(e.id) && (e.created_by === owner ||
                           role === "admin") && (
                           <div className="row-actions">
-                            <ExpenseForm categories={categories} merchants={merchants} expense={e} />
+                            <ExpenseForm categories={categories} merchants={merchants} expense={e} canManageCategories={role === "admin"} />
                             {!offline && !disconnected && <DeleteExpense expense={e} />}
                           </div>
                         )}

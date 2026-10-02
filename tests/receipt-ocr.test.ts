@@ -186,3 +186,60 @@ test("future receipt promise does not make an invoice paid", () => {
   assert.equal(fields.document_type, "invoice");
   assert.equal(fields.payment_status, undefined);
 });
+
+test("electricity bill finds the payable total, not kWh, VAT, fees or account numbers", () => {
+  const fields = extractReceiptFields(`חברת החשמל לישראלבע״מ
+חשבונית מס/קבלה - העתק נאמן למקור2021-491046350
+מספר חשבון חוזה:341742993
+מ- 31/05/2021 עד20/07/2021
+תאריך עריכתהחשבון
+www.iec.co.il
+21/07/2021
+חיוב בגין צריכה - סה״כ 615 קוט״ש 266.30
+סה״כ ללאמע״מ 309.36
+מע״מ 17.00% 52.59
+סה״כ כולל מע״מ לתקופת חשבון 361.95
+המסמך משמש קבלה רק לאחר הטבעת
+חותמת הקופה ו/או חתימת הפקיד
+יש לשלם חשבון זהעד
+ל-10/08/2021.
+סה״כ לתשלום(ש״ח) 361.95
+תשלום בכרטיס אשראי מעל 10,000 ₪ יחויב בעמלה`, { categories: [{ id: "electric", name: "חשמל" }] });
+  assert.equal(fields.amount, "361.95");
+  assert.equal(fields.currency, "ILS");
+  assert.equal(fields.merchant, 'חברת החשמל לישראל בע"מ');
+  assert.equal(fields.reference, "2021-491046350");
+  assert.equal(fields.spent_on, "2021-07-21");
+  assert.equal(fields.due_on, "2021-08-10");
+  assert.equal(fields.category_id, "electric");
+  assert.equal(fields.payment_status, "unpaid");
+  assert.equal(fields.notes, undefined);
+});
+
+test("taxable base cannot compete with the final receipt total", () => {
+  assert.equal(extractReceiptFields('ספק בע״מ\nחשבונית מס / קבלה\nסה״כ חייב במע״מ: ₪423.73\nסה״כ: ₪500.00\n₪500.00 :סה״כ').amount, "500.00");
+});
+
+test("French invoice uses tax-inclusive amount rather than HT or TVA", () => {
+  const fields = extractReceiptFields('Free Mobile\nFacture no 123456\nTotal de la facture HT 7.92\nTVA 20% 1.58\nSomme a payer TTC 9.50');
+  assert.equal(fields.amount, "9.50");
+  assert.equal(fields.document_type, "invoice");
+});
+
+test("a zero-value invoice cannot turn a contact number or another currency amount into an expense", () => {
+  const fields = extractReceiptFields('Free Mobile\nFacture no 123456\nSomme a payer TTC 0.00\nContact EUR 7289\nTotal de la facture HT 0.00');
+  assert.equal(fields.amount, undefined);
+  assert.ok(fields.warnings.some(warning => warning.includes('אפס')));
+});
+
+test("the stated payment amount outranks an insurance policy's USD premium", () => {
+  const fields = extractReceiptFields('PassportCard\nקבלה\nהתשלום / זיכוי בסך 508.18 ש״ח בגין השרותים\nסכום ב- USD מטבע התשלום\nפוליסה 151.20 ILS');
+  assert.equal(fields.amount, '508.18');
+  assert.equal(fields.currency, 'ILS');
+});
+
+test("negative or malformed final amounts never fall back to fees elsewhere in the document", () => {
+  for (const total of ['-361.95', '361.950']) {
+    assert.equal(extractReceiptFields(`ספק בע״מ\nחשבונית\nסה״כ לתשלום ${total} ₪\nעמלת שירות USD 8.00`).amount, undefined);
+  }
+});

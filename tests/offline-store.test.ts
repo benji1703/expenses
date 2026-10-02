@@ -33,3 +33,18 @@ test("durable drafts keep receipt blobs and stay isolated across accounts", asyn
   await removeDraft(recovered.operation_id);
   assert.deepEqual(await listDrafts(profile.id), []);
 });
+
+test("category created inside an expense remains selectable after losing connection", async () => {
+  const { cacheCreatedCategory } = await import("../src/lib/offline-store.ts");
+  Object.defineProperty(globalThis, "indexedDB", { value: indexedDB, configurable: true });
+  Object.defineProperty(globalThis, "window", { value: new EventTarget(), configurable: true });
+  const profile = { id: "category-owner", email: "category@example.com", role: "admin" as const };
+  await saveSnapshot({ profile, categories: [], expenses: [], ledger: true, saved_at: "2026-10-02T10:00:00Z" });
+  const category = { id: "created-category", name: "עבודות חשמל", color: "#9b8c7c" };
+  await cacheCreatedCategory(category); await cacheCreatedCategory(category);
+  assert.deepEqual((await loadSnapshot(profile.id))?.categories, [category]);
+  assert.equal((await loadSnapshot(profile.id))?.saved_at, "2026-10-02T10:00:00Z");
+  await clearActiveProfile();
+  await cacheCreatedCategory({ ...category, id: "signed-out" });
+  assert.equal((await loadSnapshot(profile.id))?.categories.length, 1);
+});

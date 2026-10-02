@@ -8,7 +8,7 @@ import { outsideDialog } from "@/lib/dialog-dismiss";
 
 // Keep the small editor available as soon as the page loads. OCR/PDF engines
 // remain lazy; opening the form must never require a working connection.
-export function ExpenseForm({ categories, merchants, expense }: { categories: Category[]; merchants?: string[]; expense?: Expense }) {
+export function ExpenseForm({ categories, merchants, expense, canManageCategories = false }: { categories: Category[]; merchants?: string[]; expense?: Expense; canManageCategories?: boolean }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const dirty = useRef(false);
@@ -42,7 +42,12 @@ export function ExpenseForm({ categories, merchants, expense }: { categories: Ca
         className="expense-dialog"
         aria-label={expense ? "עריכת הוצאה" : "הוצאה חדשה"}
         onClose={() => { setOpen(false); setSaving(false); }}
-        onCancel={(event) => { event.preventDefault(); dismiss(); }}
+        onCancel={(event) => {
+          // Native file-picker cancellation bubbles in Safari; only Escape on
+          // this dialog should dismiss the expense editor.
+          if (event.target !== event.currentTarget) return;
+          event.preventDefault(); dismiss();
+        }}
         onInput={() => { dirty.current = true; }}
         onChange={() => { dirty.current = true; }}
         onClick={(event) => {
@@ -56,7 +61,7 @@ export function ExpenseForm({ categories, merchants, expense }: { categories: Ca
             </div>
             <button type="button" className="icon-button" disabled={saving} aria-label="סגירה" onClick={dismiss}><X size={20} /></button>
           </div>
-          <ExpenseFields categories={categories} merchants={merchants} expense={expense} onSaved={saved} onDirty={() => { dirty.current = true; }} onPendingChange={setSaving} />
+          <ExpenseFields categories={categories} merchants={merchants} expense={expense} canManageCategories={canManageCategories} onSaved={saved} onDirty={() => { dirty.current = true; }} onPendingChange={setSaving} />
         </>}
       </dialog>
     </>

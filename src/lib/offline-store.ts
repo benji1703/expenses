@@ -1,4 +1,4 @@
-import type { Expense } from "./expenses";
+import type { Category, Expense } from "./expenses";
 import type { OfflineProfile, OfflineSnapshot, PendingExpense } from "./offline-types";
 
 const databaseName = "meshek48-offline-v1";
@@ -49,6 +49,14 @@ export async function saveSnapshot(snapshot: OfflineSnapshot) {
   changed();
 }
 export async function loadSnapshot(owner: string) { return access<OfflineSnapshot | undefined>("data", "readonly", (store) => store.get(owner)); }
+export async function cacheCreatedCategory(category: Category) {
+  const profile = await activeProfile();
+  const snapshot = profile ? await loadSnapshot(profile.id) : null;
+  if (snapshot) {
+    await access("data", "readwrite", (store) => store.put({ ...snapshot, categories: [...snapshot.categories.filter((item) => item.id !== category.id), category] }, snapshot.profile.id));
+    changed();
+  }
+}
 export async function clearActiveProfile() {
   await access("data", "readwrite", (store) => store.delete("active"));
   // Pending drafts stay isolated by owner and can resume after that owner signs in again.
