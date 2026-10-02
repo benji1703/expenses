@@ -1,7 +1,6 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LoaderCircle, Pencil, Plus, X } from "lucide-react";
 import type { Category, Expense } from "@/lib/expenses";
@@ -11,14 +10,12 @@ const ExpenseFields = dynamic(() => import("./expense-fields"), {
   loading: () => <p className="muted" role="status"><LoaderCircle className="spin" size={18} /> טוען את הטופס…</p>,
 });
 
-export function ExpenseForm({ categories, expense }: { categories: Category[]; expense?: Expense }) {
+export function ExpenseForm({ categories, merchants, expense }: { categories: Category[]; merchants?: string[]; expense?: Expense }) {
   const [open, setOpen] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
-  const router = useRouter();
   const saved = useCallback(() => {
     dialog.current?.close();
-    router.refresh();
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     if (open) dialog.current?.showModal();
@@ -48,7 +45,7 @@ export function ExpenseForm({ categories, expense }: { categories: Category[]; e
             </div>
             <button type="button" className="icon-button" aria-label="סגירה" onClick={() => dialog.current?.close()}><X size={20} /></button>
           </div>
-          <ExpenseFields categories={categories} expense={expense} onSaved={saved} />
+          <ExpenseFields categories={categories} merchants={merchants} expense={expense} onSaved={saved} />
         </>}
       </dialog>
     </>

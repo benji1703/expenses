@@ -1,106 +1,138 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import type { Worker } from "tesseract.js";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { Worker, PSM } from "tesseract.js";
+import { extractReceiptFields, receiptPdfText, type ReceiptContext, type ReceiptFields } from "@/lib/receipt-ocr";
 
-export type ReceiptFields = {
-  merchant?: string;
-  amount?: string;
-  spent_on?: string;
-  notes?: string;
-};
-
-async function pdfPages(file: File): Promise<Blob[]> {
-  const pdfjs = await import("pdfjs-dist");
-  pdfjs.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
-  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
-  if (pdf.numPages > 8) throw new Error("אפשר לסרוק עד 8 עמודים בכל פעם.");
-  const pages: Blob[] = [];
-  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
-    const page = await pdf.getPage(pageNumber);
-    const viewport = page.getViewport({ scale: 2 });
-    const canvas = document.createElement("canvas");
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("לא ניתן לעבד את מסמך ה־PDF.");
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    await page.render({ canvas, canvasContext: context, viewport }).promise;
-    pages.push(await new Promise<Blob>((resolve, reject) =>
-      canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("לא ניתן לקרוא את עמוד ה־PDF.")), "image/png"),
-    ));
-  }
-  return pages;
-}
-
-function extractFields(text: string): ReceiptFields {
-  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const cleaned = lines.filter((line) => line.length > 2 && !/^[-\d\s/.,:]+$/.test(line));
-  const merchant = cleaned.slice(0, 3).sort((a, b) => a.length - b.length)[0]?.slice(0, 160);
-  const amountPatterns = [
-    /(?:סה["״׳']?כ|סך\s*הכל|לתשלום|סהכ|total|amount\s*due)[^\d]{0,16}(\d{1,8}(?:[.,]\d{1,2})?)/i,
-    /(?:₪|ILS|NIS)\s*(\d{1,8}(?:[.,]\d{1,2})?)/i,
-    /(\d{1,8}(?:[.,]\d{1,2})?)\s*(?:₪|ILS|NIS)/i,
-  ];
-  let amount: string | undefined;
-  for (const pattern of amountPatterns) {
-    const match = text.match(pattern);
-    if (match) {
-      const value = Number(match[1].replace(",", "."));
-      if (value > 0 && value <= 99_999_999.99) { amount = value.toFixed(2); break; }
-    }
-  }
-  const dateMatch = text.match(/(?:^|\D)(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})(?:\D|$)/m)
-    ?? text.match(/(?:^|\D)(\d{4})[/.\-](\d{1,2})[/.\-](\d{1,2})(?:\D|$)/m);
-  let spent_on: string | undefined;
-  if (dateMatch) {
-    let year: number, month: number, day: number;
-    if (dateMatch[1].length === 4) { year = +dateMatch[1]; month = +dateMatch[2]; day = +dateMatch[3]; }
-    else { day = +dateMatch[1]; month = +dateMatch[2]; year = +dateMatch[3]; if (year < 100) year += year < 50 ? 2000 : 1900; }
-    const date = new Date(Date.UTC(year, month - 1, day));
-    if (date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day && year >= 2000 && year <= 2100)
-      spent_on = date.toISOString().slice(0, 10);
-  }
-  return { merchant, amount, spent_on, notes: text.trim().slice(0, 2000) || undefined };
+export type ReceiptScan = { file_name: string; fields?: ReceiptFields; error?: string };
+const unreadable = "לא הצלחנו לזהות פרטים מהמסמך. אפשר למלא את הטופס ידנית.";
+function quality(fields: ReceiptFields) {
+  return (fields.amount ? 4 : 0) + (fields.merchant ? 2 : 0) + (fields.document_type ? 1 : 0) + (fields.spent_on ? 1 : 0);
 }
 
 export function useReceiptOcr() {
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [status, setStatus] = useState("");
   const [error, setError] = useState("");
-  const [fields, setFields] = useState<ReceiptFields | null>(null);
-  const scan = useCallback(async (input: File | File[]) => {
-    setProcessing(true); setProgress(0); setError(""); setFields(null);
+  const [results, setResults] = useState<ReceiptScan[]>([]);
+  const workerRef = useRef<Worker | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; void workerRef.current?.terminate(); workerRef.current = null; };
+  }, []);
+  const reset = useCallback(() => { setResults([]); setError(""); }, []);
+
+  const scan = useCallback(async (files: File[], context: ReceiptContext = {}) => {
+    setProcessing(true); setProgress(0); setError(""); setResults([]);
     let worker: Worker | undefined;
-    try {
-      const { createWorker } = await import("tesseract.js");
-      const files = Array.isArray(input) ? input : [input];
-      const images = (await Promise.all(files.map((file) =>
-        file.type === "application/pdf" ? pdfPages(file) : [file],
-      ))).flat();
-      worker = await createWorker(["heb", "eng"], 1, {
-        workerPath: "/tesseract/worker.min.js",
-        corePath: "/tesseract/tesseract-core-simd-lstm.wasm.js",
-        langPath: "/tesseract/lang",
-        workerBlobURL: false,
-        logger: (message) => { if (message.status === "recognizing text") setProgress(Math.round(message.progress * 100)); },
-      });
-      let text = "";
-      for (let index = 0; index < images.length; index++) {
-        const result = await worker.recognize(images[index]);
-        text += `${result.data.text}\n`;
-        setProgress(Math.round(((index + 1) / images.length) * 100));
+    const assertActive = () => { if (!mounted.current) throw new Error("הסריקה הופסקה."); };
+    let currentFile = 0, currentPage = 0, pageCount = 1;
+    const updateProgress = (fraction: number) => {
+      if (mounted.current) setProgress((previous) => Math.max(previous, Math.min(99, Math.round((currentFile + (currentPage + fraction) / pageCount) / files.length * 100))));
+    };
+    const recognize = async (image: Blob) => {
+      assertActive();
+      if (!worker) {
+        setStatus("טוענים זיהוי עברית ואנגלית…");
+        const { createWorker } = await import("tesseract.js");
+        worker = await createWorker(["heb", "eng"], 1, {
+          workerPath: "/tesseract/worker.min.js", corePath: "/tesseract/tesseract-core-simd-lstm.wasm.js",
+          langPath: "/tesseract/lang", workerBlobURL: false,
+          logger: (message) => { if (message.status === "recognizing text") updateProgress(message.progress); },
+        });
+        if (!mounted.current) { await worker.terminate(); worker = undefined; assertActive(); }
+        workerRef.current = worker ?? null;
       }
-      const parsed = extractFields(text);
-      if (!parsed.merchant && !parsed.amount && !parsed.spent_on)
-        throw new Error("לא הצלחנו לזהות פרטים מהמסמך. אפשר למלא את הטופס ידנית.");
-      setFields(parsed);
-      return parsed;
+      assertActive();
+      setStatus(`קוראים ${files[currentFile].name} · ${currentFile + 1}/${files.length}`);
+      await worker!.setParameters({ tessedit_pageseg_mode: "3" as PSM, preserve_interword_spaces: "1", user_defined_dpi: "300" });
+      const first = await worker!.recognize(image, { rotateAuto: true });
+      let text = first.data.text;
+      // One targeted retry for sparse/poorly aligned receipts; no extra pass on successful scans.
+      if (!extractReceiptFields(text, context).amount) {
+        assertActive();
+        await worker!.setParameters({ tessedit_pageseg_mode: "11" as PSM });
+        const retry = await worker!.recognize(image, { rotateAuto: true });
+        if (quality(extractReceiptFields(retry.data.text, context)) > quality(extractReceiptFields(text, context))) text = retry.data.text;
+      }
+      return text;
+    };
+    const readPdf = async (file: File) => {
+      const pdfjs = await import("pdfjs-dist");
+      pdfjs.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
+      const loadingTask = pdfjs.getDocument({ data: await file.arrayBuffer() });
+      try {
+        const pdf = await loadingTask.promise;
+        if (pdf.numPages > 8) throw new Error("אפשר לסרוק עד 8 עמודים בכל קובץ.");
+        pageCount = pdf.numPages;
+        const texts: string[] = [];
+        for (currentPage = 0; currentPage < pageCount; currentPage++) {
+          assertActive();
+          setStatus(`קוראים ${file.name} · עמוד ${currentPage + 1}/${pageCount}`);
+          const page = await pdf.getPage(currentPage + 1);
+          try {
+            const content = await page.getTextContent();
+            const text = receiptPdfText(content.items.filter((item) => "str" in item));
+            // Digital PDF text avoids raster OCR entirely; scanned pages fall back to OCR.
+            if (text.trim().length >= 40 && quality(extractReceiptFields(text, context)) >= 6) {
+              texts.push(text);
+            } else {
+              const base = page.getViewport({ scale: 1 });
+              const scale = Math.min(2.5, Math.sqrt(8_000_000 / (base.width * base.height)));
+              const viewport = page.getViewport({ scale });
+              const canvas = document.createElement("canvas");
+              try {
+                const context2d = canvas.getContext("2d");
+                if (!context2d) throw new Error("לא ניתן לעבד את מסמך ה־PDF.");
+                canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
+                await page.render({ canvas, canvasContext: context2d, viewport }).promise;
+                const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("לא ניתן לקרוא את עמוד ה־PDF.")), "image/png"));
+                const recognized = await recognize(blob);
+                texts.push(quality(extractReceiptFields(text, context)) > quality(extractReceiptFields(recognized, context)) ? text : recognized);
+              } finally { canvas.width = 0; canvas.height = 0; }
+            }
+            updateProgress(1);
+          } finally { page.cleanup(); }
+        }
+        return texts.join("\n");
+      } finally { await loadingTask.destroy(); }
+    };
+    try {
+      if (!files.length || files.length > 10 || files.reduce((size, file) => size + file.size, 0) > 10 * 1024 * 1024)
+        throw new Error("בחרו עד 10 קבצים, עד 10 MB בסך הכול.");
+      const scanned: ReceiptScan[] = [];
+      // Never concatenate different attachments or add their totals together.
+      for (currentFile = 0; currentFile < files.length; currentFile++) {
+        assertActive(); currentPage = 0; pageCount = 1;
+        const file = files[currentFile];
+        try {
+          const text = file.type === "application/pdf" || /\.pdf$/i.test(file.name) ? await readPdf(file) : await recognize(file);
+          assertActive();
+          const fields = extractReceiptFields(text, context);
+          if (!fields.merchant && !fields.amount && !fields.spent_on && !fields.amount_candidates.length) throw new Error(unreadable);
+          scanned.push({ file_name: file.name, fields });
+        } catch (cause) {
+          assertActive();
+          scanned.push({ file_name: file.name, error: cause instanceof Error ? cause.message : "סריקת הקבלה נכשלה." });
+        }
+        setResults([...scanned]);
+      }
+      setProgress(100);
+      if (!scanned.some((item) => item.fields)) setError(unreadable);
+      return scanned;
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "סריקת הקבלה נכשלה.";
-      setError(message); throw cause;
+      if (mounted.current) setError(cause instanceof Error ? cause.message : "סריקת הקבלה נכשלה.");
+      return [];
     } finally {
-      await worker?.terminate(); setProcessing(false); setProgress(0);
+      // Unmount cleanup may have already stopped this worker.
+      if (worker && workerRef.current === worker) {
+        workerRef.current = null;
+        try { await worker.terminate(); } catch { /* Already terminated. */ }
+      }
+      if (mounted.current) { setProcessing(false); setStatus(""); }
     }
   }, []);
-  return { scan, processing, progress, error, fields };
+  return { scan, processing, progress, status, error, results, reset };
 }

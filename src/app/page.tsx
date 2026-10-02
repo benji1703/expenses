@@ -1,3 +1,5 @@
+import { AppLink } from "@/components/app-link";
+import { OfflineSnapshot } from "@/components/offline-snapshot";
 import { BrandMark } from "@/components/brand-mark";
 import { CategoryManager } from "@/components/category-manager";
 import { ExportPanel } from "@/components/export-panel";
@@ -112,6 +114,7 @@ export default async function Home({
     receiptsByExpense.set(expense.id, expense_receipts ?? []);
     return expense as Expense;
   });
+  const merchants = [...new Set(expenses.map((expense) => expense.merchant))];
   const summary = (summaryResult.data ?? []) as {
     currency: string;
     category_id: string;
@@ -167,6 +170,7 @@ export default async function Home({
   const canWrite = member.role !== "read_only";
   return (
     <div className="app-shell">
+      <OfflineSnapshot snapshot={{ profile: { id: user.id, email: user.email, role: member.role }, categories, expenses, ledger: needsExpenses && !expensesResult.error, saved_at: new Date().toISOString() }} />
       <a className="skip-link" href="#main-content">
         דילוג לתוכן הפרויקט
       </a>
@@ -179,32 +183,32 @@ export default async function Home({
         </Link>
         <p className="sidebar-label">פרויקט השיפוץ</p>
         <nav aria-label="ניווט ראשי">
-          <Link className={`nav-link ${section === "overview" ? "active" : ""}`} href="/">
+          <AppLink className={`nav-link ${section === "overview" ? "active" : ""}`} href="/">
             <LayoutDashboard size={18} />
             סקירה
-          </Link>
-          <Link className={`nav-link ${section === "expenses" ? "active" : ""}`} href="/expenses">
+          </AppLink>
+          <AppLink className={`nav-link ${section === "expenses" ? "active" : ""}`} href="/expenses">
             <ReceiptText size={18} />
             הוצאות
-          </Link>
-          <Link className={`nav-link ${section === "categories" || section === "category" ? "active" : ""}`} href="/categories">
+          </AppLink>
+          <AppLink className={`nav-link ${section === "categories" || section === "category" ? "active" : ""}`} href="/categories">
             <Tags size={18} />
             קטגוריות
-          </Link>
-          <Link className={`nav-link ${section === "guide" ? "active" : ""}`} href="/guide">
+          </AppLink>
+          <AppLink className={`nav-link ${section === "guide" ? "active" : ""}`} href="/guide">
             <BookOpen size={18} />
             מדריך
-          </Link>
+          </AppLink>
           {member.role === "admin" && (
-            <Link className={`nav-link ${section === "household" ? "active" : ""}`} href="/household">
+            <AppLink className={`nav-link ${section === "household" ? "active" : ""}`} href="/household">
               <Users size={18} />
               גישה
-            </Link>
+            </AppLink>
           )}
-          <Link className={`nav-link ${section === "account" ? "active" : ""}`} href="/account">
+          <AppLink className={`nav-link ${section === "account" ? "active" : ""}`} href="/account">
             <Fingerprint size={18} />
             החשבון שלי
-          </Link>
+          </AppLink>
           <a className="nav-link house-link" href="https://house.arbibe.dev" target="_blank" rel="noopener noreferrer">
             <ArrowUpRight size={18} />
             אתר הבית
@@ -258,7 +262,7 @@ export default async function Home({
               מעקב אחר תשלומי רמ״י, תכנון, רישוי, קבלנים וחומרי בנייה.
             </p>
           </div>
-          {canWrite && <ExpenseForm categories={categories} />}
+          {canWrite && <ExpenseForm categories={categories} merchants={merchants} />}
         </section>}
         {section === "categories" && <CategoryManager categories={categories} canManage={member.role === "admin"} />}
         {section !== "guide" && section !== "categories" && section !== "household" && section !== "account" && <>
@@ -512,7 +516,7 @@ export default async function Home({
                         {canWrite && (e.created_by === user.id ||
                           member.role === "admin") && (
                           <div className="row-actions">
-                            <ExpenseForm categories={categories} expense={e} />
+                            <ExpenseForm categories={categories} merchants={merchants} expense={e} />
                             <DeleteExpense expense={e} />
                           </div>
                         )}
@@ -539,7 +543,7 @@ export default async function Home({
                   : "הוסיפו דרישת תשלום, חשבונית או אומדן ראשון לנחלה."}
               </p>
               {!search && !categoryId && canWrite && (
-                <ExpenseForm categories={categories} />
+                <ExpenseForm categories={categories} merchants={merchants} />
               )}
             </div>
           )}

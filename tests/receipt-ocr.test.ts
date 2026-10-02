@@ -1,0 +1,188 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { extractReceiptFields, parseReceiptAmount, receiptPdfText } from "../src/lib/receipt-ocr.ts";
+
+const categories = [
+  { id: "electrical", name: "חשמל ותאורה" },
+  { id: "planning", name: "אדריכלות ותכנון" },
+  { id: "plumbing", name: "אינסטלציה" },
+];
+
+test("Hebrew tax receipt: supplier, final total, type and category", () => {
+  const fields = extractReceiptFields(`אור חשמל בע״מ
+עוסק מורשה: 512345678
+חשבונית מס / קבלה מס׳ 004821
+תאריך: 02/10/2026
+לכבוד: משק 48
+התקנת לוח חשמל ותאורה
+סה״כ לפני מע״מ 1,000.00
+מע״מ 18% 180.00
+סה״כ לתשלום ₪ 1,180.00`, { categories });
+  assert.equal(fields.merchant, 'אור חשמל בע"מ');
+  assert.equal(fields.amount, "1180.00");
+  assert.equal(fields.currency, "ILS");
+  assert.equal(fields.document_type, "tax_receipt");
+  assert.equal(fields.payment_status, "paid");
+  assert.equal(fields.spent_on, "2026-10-02");
+  assert.equal(fields.reference, "004821");
+  assert.equal(fields.category_id, "electrical");
+});
+
+test("amount before Hebrew label, thousands and comma decimal", () => {
+  const fields = extractReceiptFields(`קבלה
+אבי אינסטלציה בע״מ
+2.360,50 ש״ח סך הכל התקבל
+עודף ₪ 39.50`, { categories });
+  assert.equal(fields.amount, "2360.50");
+  assert.equal(fields.merchant, 'אבי אינסטלציה בע"מ');
+  assert.equal(fields.payment_status, "paid");
+  assert.equal(fields.category_id, "plumbing");
+});
+
+test("separate-line total and receipt header are recognized", () => {
+  const fields = extractReceiptFields(`קבלה מס׳ 1234
+שם העסק: רות אדריכלות
+סך הכול לתשלום
+12 345,67 ₪`);
+  assert.equal(fields.amount, "12345.67");
+  assert.equal(fields.merchant, "רות אדריכלות");
+  assert.equal(fields.reference, "1234");
+});
+
+test("request distinguishes issue date from payment deadline", () => {
+  const fields = extractReceiptFields(`רשות מקרקעי ישראל
+דרישת תשלום
+מועד לתשלום: 30/11/2026
+תאריך: 2026-10-02
+מספר שובר: 123456789
+דמי היוון
+סכום לתשלום: 24,600 ₪`, { categories: [{ id: "rights", name: "זכויות ורמ״י" }] });
+  assert.equal(fields.merchant, "רשות מקרקעי ישראל");
+  assert.equal(fields.amount, "24600.00");
+  assert.equal(fields.payment_status, "unpaid");
+  assert.equal(fields.due_on, "2026-11-30");
+  assert.equal(fields.spent_on, "2026-10-02");
+  assert.equal(fields.category_id, "rights");
+});
+
+test("invoice alone does not imply payment", () => {
+  const fields = extractReceiptFields(`יוסי קבלנות בע״מ
+חשבונית מס 421
+סה״כ כולל מע״מ: 5,900.00 ₪`);
+  assert.equal(fields.document_type, "invoice");
+  assert.equal(fields.payment_status, undefined);
+  assert.equal(fields.amount, "5900.00");
+  assert.match(fields.warnings.join(" "), /אינה אישור תשלום/);
+});
+
+test("quote suggests planned, not paid", () => {
+  const fields = extractReceiptFields(`דנה תכנון בע״מ
+הצעת מחיר
+תכנון אדריכלי
+סכום סופי: 15,000 ש״ח`);
+  assert.equal(fields.document_type, "quote");
+  assert.equal(fields.payment_status, "planned");
+  assert.equal(fields.amount, "15000.00");
+});
+
+test("same-ranked conflicting totals require review", () => {
+  const fields = extractReceiptFields(`יוסי עבודות
+קבלה
+סה״כ לתשלום: 1,000.00 ₪
+סה״כ לתשלום: 2,000.00 ₪`);
+  assert.equal(fields.amount, undefined);
+  assert.deepEqual(fields.amount_candidates, ["1000.00", "2000.00"]);
+});
+
+test("identifiers, VAT, discounts and invalid dates never become a total", () => {
+  const fields = extractReceiptFields(`קבלה
+עוסק מורשה 512345678
+טלפון: 054-1234567
+מספר כרטיס: 1234
+תאריך: 31/02/2026
+מע״מ 18% ₪ 180.00
+הנחה ₪ 100.00
+עודף ₪ 20.00`);
+  assert.equal(fields.amount, undefined);
+  assert.equal(fields.merchant, undefined);
+  assert.equal(fields.spent_on, undefined);
+});
+
+test("known supplier matches normalized Hebrew punctuation", () => {
+  const fields = extractReceiptFields(`אור חשמל בע״מ
+קבלה
+סהכ לתשלום 100`, { merchants: ['אור חשמל בע"מ'] });
+  assert.equal(fields.merchant, 'אור חשמל בע"מ');
+});
+
+test("customer names cannot be mistaken for the supplier", () => {
+  const fields = extractReceiptFields(`קבלה
+לכבוד
+משק 48 בע״מ
+סה״כ לתשלום 100 ₪`);
+  assert.equal(fields.merchant, undefined);
+});
+
+test("category matching uses existing IDs and abstains when ambiguous", () => {
+  const text = `ספק עבודות בע״מ
+קבלה
+התקנת חשמל ואינסטלציה
+סהכ לתשלום 1000 ₪`;
+  assert.equal(extractReceiptFields(text, { categories }).category_id, undefined);
+  assert.equal(extractReceiptFields(text, { categories: [{ id: "general", name: "שונות" }] }).category_id, undefined);
+});
+
+test("money formats and malformed decimals", () => {
+  for (const raw of ["1,234.56", "1.234,56", "1 234,56", "1234.56"])
+    assert.equal(parseReceiptAmount(raw), "1234.56");
+  assert.equal(parseReceiptAmount("1,234"), "1234.00");
+  assert.equal(parseReceiptAmount("10,50"), "10.50");
+  assert.equal(parseReceiptAmount("12.34.56"), undefined);
+  assert.equal(parseReceiptAmount("0"), undefined);
+  assert.equal(parseReceiptAmount("512345678"), undefined);
+});
+
+test("PDF Hebrew rows preserve reading order and amount digits", () => {
+  const item = (str: string, x: number, y: number, dir = "rtl") => ({ str, dir, transform: [1, 0, 0, 1, x, y], width: 70, height: 12 });
+  assert.equal(receiptPdfText([
+    item("1,180.00", 10, 80, "ltr"), item('סה״כ לתשלום', 200, 80),
+    item('אור חשמל בע״מ', 200, 100),
+  ]), 'אור חשמל בע״מ\nסה״כ לתשלום 1,180.00');
+});
+
+test("OCR spacing loss and one-character supplier error match a unique known name", () => {
+  const fields = extractReceiptFields(`אור חשמלבע״מ\nקבלה\nסהכ לתשלום 1180`, { merchants: ['אור חשמל בע"מ'] });
+  assert.equal(fields.merchant, 'אור חשמל בע"מ');
+  assert.equal(extractReceiptFields(`אור חשמנ בע״מ\nקבלה\nסהכ לתשלום 1180`, { merchants: ['אור חשמל בע"מ'] }).merchant, 'אור חשמל בע"מ');
+});
+
+test("ambiguous supplier similarity retains the scanned name", () => {
+  const fields = extractReceiptFields(`אור חשמנ בע״מ\nקבלה\nסהכ לתשלום 1180`, { merchants: ['אור חשמל בע"מ', 'אור חשמק בע"מ'] });
+  assert.equal(fields.merchant, 'אור חשמנ בע"מ');
+});
+
+test("specific Hebrew fee chooses the matching existing RMI category", () => {
+  const fields = extractReceiptFields(`רשות מקרקעי ישראל\nדרישת תשלום\nדמי היוון\nסהכ לתשלום 24600 ₪`, { categories: [
+    { id: "permit", name: "רמ״י — דמי היתר" },
+    { id: "rights", name: "רמ״י — רכישת זכויות והיוון" },
+    { id: "lease", name: "רמ״י — חכירה והסדרת שימושים" },
+  ] });
+  assert.equal(fields.category_id, "rights");
+});
+
+test("OCR-mangled reference label falls back only to a document heading", () => {
+  const fields = extractReceiptFields(`אור חשמלבע״מ\nחשבונית מס / קבלה ‘on004821\nתאריך:02/10/2026\nסהכ לתשלום ₪1180.00`);
+  assert.equal(fields.reference, "004821");
+});
+
+test("Hebrew supplier name containing שח is not a currency marker", () => {
+  const fields = extractReceiptFields(`שחר עבודות בע״מ\nקבלה\nסך הכול 123.45`);
+  assert.equal(fields.merchant, 'שחר עבודות בע"מ');
+  assert.equal(fields.amount, "123.45");
+});
+
+test("future receipt promise does not make an invoice paid", () => {
+  const fields = extractReceiptFields(`אור חשמל בע״מ\nחשבונית מס\nקבלה תונפק לאחר התשלום\nסהכ לתשלום 1180 ₪`);
+  assert.equal(fields.document_type, "invoice");
+  assert.equal(fields.payment_status, undefined);
+});

@@ -1,4 +1,4 @@
-# המשק — Beit Hanania renovation ledger
+# Meshek 48 — Beit Hanania renovation ledger
 
 A private, shared expense ledger for renovating a **נחלה בבית חנניה**, Israel. Hebrew RTL interface, ILS defaults, and an official-source guide to Israel Land Authority (רמ״י) payments and Hof HaCarmel planning services.
 
@@ -7,15 +7,18 @@ A private, shared expense ledger for renovating a **נחלה בבית חנניה
 - Invitation-only Supabase email-link authentication; public signup disabled.
 - Shared project ledger with supplier/authority, amount, currency, category, project stage, payment status, due date, reference number and notes.
 - Separate **paid**, **unpaid** and **estimate** amounts. All-project overview by default, optional month/category/merchant filters and 25-row pagination. Currency amounts are never converted or added across currencies.
-- Private PDF/JPG/PNG attachments, up to 10 MB; server checks file signatures. Receipt links expire after 60 seconds. Receipt OCR reads Hebrew and English on-device and fills draft fields for review.
+- Private PDF/JPG/PNG attachments, up to 10 MB; server checks file signatures. Receipt links expire after 60 seconds. Receipt OCR reads Hebrew and English on-device. Each attachment has a separate review before applying supplier, final total, dates, reference, suggested category and payment status. Digital PDFs use embedded text when possible; scanned documents use local OCR. Ambiguous totals require a choice, and invoices alone never establish payment.
 - Project members can view shared expenses; creators and administrators can edit or delete them. Administrators can invite read-only members, manage access, and export filtered expenses to XLSX, CSV or JSON.
+- Offline expense drafts and receipt files are stored in IndexedDB, isolated by account. A visible status and draft queue show pending uploads, permission errors and conflicts. Sync retries on reconnect, foreground return and every 30 seconds while the app is visible; iOS users should keep or reopen the app for uploads. Retries use stable expense/attachment IDs and optimistic edit versions.
+- An installable iOS home-screen app with an offline workspace for cached data, filters, categories and draft entry. Only the public offline shell/assets are service-worker cached; authenticated HTML, RSC, auth and API responses remain network-only. The offline list is explicitly a cached subset, not the complete ledger.
+- Primary navigation prefetches common routes and caches visited pages for 45 seconds. Successful sync refreshes the live ledger; every write checks current membership and RLS.
 - Six official-source reference cards plus Beit Hanania/Hof HaCarmel council, committee, fee table and GIS links. Informational content is separate from real expenses and never calculates legal liabilities or inserts sample charges.
 
 ## Stack and security
 
-Next.js App Router, React, TypeScript, Tailwind CSS, Supabase Postgres/Auth/Storage, Vercel hosting, and Cloudflare DNS. Generated Supabase database types provide typed queries; no separate ORM is required. Every product table and private receipt bucket uses row-level security. Server actions validate input and independently check authentication/approval. Only invitation management and pseudonymous sign-in rate limiting use the server-only secret key.
+Next.js App Router, React, TypeScript, Tailwind CSS, Supabase Postgres/Auth/Storage, Vercel hosting, and Cloudflare DNS. Generated Supabase database types provide typed queries; no separate ORM is required. Every product table and private receipt bucket uses row-level security. Server actions validate input and independently check authentication/approval. The server-only secret key is used for invitation management, pseudonymous sign-in rate limiting, and validating uploaded receipt bytes after checking current membership, expense ownership, size and file path. Attachments upload directly to the private Supabase bucket so Vercel request-body limits do not truncate large files.
 
-The initial administrator is `benjiar@gmail.com`; `keshet94@gmail.com` is an approved member. Hosted Supabase Auth uses custom SMTP and Hebrew magic-link/invitation templates. SMTP credentials are stored only in Supabase and are never committed here.
+The initial administrator is `benjiar@gmail.com`; `keshet94@gmail.com` is an approved member. Hosted Supabase Auth uses custom SMTP and English magic-link/invitation templates. SMTP credentials are stored only in Supabase and are never committed here.
 
 ## Environment variables: Vercel only
 

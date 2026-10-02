@@ -1,39 +1,62 @@
 "use client";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { LoaderCircle, Plus, ScanText, UploadCloud } from "lucide-react";
-import { saveExpense, type ActionState } from "@/app/actions";
+import { type ActionState } from "@/app/actions";
 import { stages, paymentStatuses } from "@/lib/renovation-guide";
 import type { Category, Expense } from "@/lib/expenses";
 import { useReceiptOcr } from "@/components/use-receipt-ocr";
+import { queueExpense } from "@/lib/offline-sync";
+import { ReceiptReview } from "@/components/receipt-review";
+import type { ReceiptFields } from "@/lib/receipt-ocr";
 import { FormStatus } from "@/components/form-status";
 
 const initial: ActionState = {};
 
-export default function ExpenseFields({ categories, expense, onSaved }: {
+export default function ExpenseFields({ categories, merchants = [], expense, onSaved }: {
   categories: Category[];
+  merchants?: string[];
   expense?: Expense;
   onSaved: () => void;
 }) {
-  const [state, action, pending] = useActionState(saveExpense, initial);
+  const [state, action, pending] = useActionState(async (_previous: ActionState, form: FormData): Promise<ActionState> => {
+    try { return { success: await queueExpense(form, expense) }; }
+    catch (cause) { return { error: cause instanceof Error ? cause.message : "לא ניתן לשמור במכשיר. הטופס נשאר פתוח." }; }
+  }, initial);
   const [files, setFiles] = useState<string[]>([]);
-  const { scan, processing: scanning, progress, error: ocrError, fields: ocrFields } = useReceiptOcr();
-  const merchantRef = useRef<HTMLInputElement>(null);
-  const amountRef = useRef<HTMLInputElement>(null);
-  const dateRef = useRef<HTMLInputElement>(null);
-  const notesRef = useRef<HTMLTextAreaElement>(null);
+  const { scan, processing: scanning, progress, status, error: ocrError, results, reset } = useReceiptOcr();
+  const [selectedScan, setSelectedScan] = useState(0);
+  const lastApplied = useRef<Record<string, string>>({});
+  const formRef = useRef<HTMLFormElement>(null);
   const filesRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (state.success) onSaved();
   }, [state.success, onSaved]);
 
+  function applyScan(fields: ReceiptFields) {
+    const next: Record<string, string> = {};
+    for (const name of ["merchant", "amount", "spent_on", "currency", "category_id", "payment_status", "due_on", "reference", "notes"] as const) {
+      const element = formRef.current?.elements.namedItem(name);
+      if (!(element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement)) continue;
+      const value = fields[name];
+      // Switching documents clears earlier OCR values, while preserving manual edits.
+      if (!value && lastApplied.current[name] === element.value) element.value = "";
+      if (value && (name !== "notes" || !element.value.trim() || lastApplied.current[name] === element.value)) {
+        element.value = value;
+        next[name] = value;
+      }
+      if (name === "payment_status" && !value && !expense) element.value = "";
+    }
+    lastApplied.current = next;
+  }
+  const selected = results[selectedScan];
+
   return (
-    <form action={action} className="stack" key={expense?.id ?? "new"}>
+    <form data-offline-safe="true" ref={formRef} action={action} className="stack" key={expense?.id ?? "new"}>
       {expense && <input type="hidden" name="id" value={expense.id} />}
       <label>
         ספק / קבלן / רשות
         <input
           name="merchant"
-          ref={merchantRef}
           placeholder="למשל: רמ״י, אדריכל או קבלן"
           defaultValue={expense?.merchant}
           required
@@ -46,7 +69,6 @@ export default function ExpenseFields({ categories, expense, onSaved }: {
           סכום
           <input
             name="amount"
-            ref={amountRef}
             type="number"
             min="0.01"
             max="99999999.99"
@@ -74,7 +96,6 @@ export default function ExpenseFields({ categories, expense, onSaved }: {
           תאריך ההוצאה / הדרישה
           <input
             name="spent_on"
-            ref={dateRef}
             type="date"
             required
             defaultValue={
@@ -112,7 +133,8 @@ export default function ExpenseFields({ categories, expense, onSaved }: {
             type="file"
             accept="application/pdf,image/jpeg,image/png"
             multiple
-            onChange={(e) => setFiles(Array.from(e.target.files ?? []).map((item) => item.name))}
+            disabled={scanning || pending}
+            onChange={(e) => { setFiles(Array.from(e.target.files ?? []).map((item) => item.name)); reset(); setSelectedScan(0); }}
           />
         </label>
         {files.length > 0 && (
@@ -124,21 +146,24 @@ export default function ExpenseFields({ categories, expense, onSaved }: {
               onClick={async () => {
                 const receipts = Array.from(filesRef.current?.files ?? []);
                 if (!receipts.length) return;
-                try {
-                  const extracted = await scan(receipts);
-                  if (merchantRef.current && extracted.merchant) merchantRef.current.value = extracted.merchant;
-                  if (amountRef.current && extracted.amount) amountRef.current.value = extracted.amount;
-                  if (dateRef.current && extracted.spent_on) dateRef.current.value = extracted.spent_on;
-                  if (notesRef.current && extracted.notes) notesRef.current.value = extracted.notes;
-                } catch { /* The hook exposes an accessible error below. */ }
+                const scanned = await scan(receipts, { categories, merchants: [...merchants, ...(expense ? [expense.merchant] : [])] });
+                setSelectedScan(Math.max(0, scanned.findIndex((item) => item.fields)));
               }}
             >
               {scanning ? <LoaderCircle className="spin" size={17} /> : <ScanText size={17} />}
-              {scanning ? `סורקים מסמך… ${progress}%` : "סריקת מסמך ומילוי פרטים"}
+              {scanning ? `סורקים מסמך… ${progress}%` : "סריקת מסמכים לבדיקה"}
             </button>
             <span className="muted">הסריקה מתבצעת במכשיר. יש לבדוק את הפרטים לפני השמירה.</span>
             {ocrError && <p className="message error" role="alert">{ocrError}</p>}
-            {ocrFields && <p className="message success" role="status">הפרטים זוהו. בדקו אותם לפני השמירה.</p>}
+            {scanning && <p className="muted" role="status">{status}</p>}
+            {!scanning && results.length > 0 && <div className="ocr-results">
+              {results.length > 1 && <label>בחירת מסמך למילוי ההוצאה<select value={selectedScan} onChange={(event) => setSelectedScan(Number(event.target.value))}>
+                {results.map((item, index) => <option value={index} key={index}>{item.file_name}{item.error ? " · הסריקה נכשלה" : ""}</option>)}
+              </select><span className="muted">כל קובץ נבדק בנפרד. הסכומים אינם מתחברים אוטומטית.</span></label>}
+              <p className="ocr-file-name"><bdi>{selected?.file_name}</bdi></p>
+              {selected?.error && <p className="message error" role="alert">{selected.error}</p>}
+              {selected?.fields && <ReceiptReview key={`${selectedScan}-${selected.fields.notes}`} fields={selected.fields} categories={categories} onApply={applyScan} />}
+            </div>}
           </div>
         )}
       </>
@@ -147,8 +172,10 @@ export default function ExpenseFields({ categories, expense, onSaved }: {
           סטטוס תשלום
           <select
             name="payment_status"
+            required
             defaultValue={expense?.payment_status ?? "paid"}
           >
+            <option value="" disabled>בחרו סטטוס תשלום</option>
             {Object.entries(paymentStatuses).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
@@ -193,14 +220,13 @@ export default function ExpenseFields({ categories, expense, onSaved }: {
         הערה <span className="muted">(לא חובה)</span>
         <textarea
           name="notes"
-          ref={notesRef}
           placeholder="פירוט העבודה, השומה או דרישת התשלום…"
           maxLength={2000}
           defaultValue={expense?.notes}
         />
       </label>
       <FormStatus state={state} />
-      <button className="primary" disabled={pending}>
+      <button className="primary" disabled={pending || scanning}>
         {pending ? (
           <LoaderCircle className="spin" size={18} />
         ) : (

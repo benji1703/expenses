@@ -55,6 +55,7 @@ export function receiptExtension(
 }
 export type Category = { id: string; name: string; color: string };
 export type Expense = {
+  updated_at?: string;
   id: string;
   merchant: string;
   amount: number;
