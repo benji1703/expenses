@@ -21,7 +21,7 @@ export async function readReceiptPdf(pdf: PDFDocumentProxy, options: {
       const fields = extractReceiptFields(text, options.context);
       // A long text layer can contain notices while the payable total is an
       // image, or use a broken Hebrew font mapping. Length alone is not proof.
-      const readable = fields.amount || fields.amount_candidates.length || fields.zero_total;
+      const readable = fields.amount || (fields.amount_candidates.length && fields.amount_source !== "currency") || fields.zero_total;
       if (!readable) {
         const recognized = await options.recognize(await options.render(page));
         if (recognized.trim()) {
@@ -33,7 +33,7 @@ export async function readReceiptPdf(pdf: PDFDocumentProxy, options: {
       }
       texts.push(text);
       const combined = extractReceiptFields(texts.join("\n"), options.context);
-      if (receiptFieldsComplete(combined) || combined.amount_candidates.length) break;
+      if (receiptFieldsComplete(combined) || (combined.amount_candidates.length && combined.amount_source !== "currency")) break;
     } finally { page.cleanup(); }
   }
   return texts.join("\n");

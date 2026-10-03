@@ -3,29 +3,21 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { extractReceiptFields, receiptOcrText, receiptImageSize, receiptFieldQuality } from '../src/lib/receipt-ocr.ts';
+import { extractReceiptFields, receiptImageSize } from '../src/lib/receipt-ocr.ts';
 import { readReceiptPdf } from '../src/lib/receipt-pdf.ts';
+import { recognizeReceiptImage } from '../src/lib/receipt-recognition.ts';
 const require = createRequire(import.meta.url);
 const { createCanvas, loadImage, DOMMatrix, ImageData, Path2D } = require('@napi-rs/canvas');
 Object.assign(globalThis, { DOMMatrix, ImageData, Path2D });
 const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-const { createWorker, PSM } = require('tesseract.js');
+const { createWorker } = require('tesseract.js');
 const files = process.argv.slice(2);
 if (!files.length) throw new Error('Usage: node --experimental-strip-types scripts/check-receipts.mjs /path/to/invoice.pdf ...');
 const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'meshek-ocr-check-'));
 let worker;
 async function recognize(blob) {
   worker ??= await createWorker(['heb', 'eng'], 1, { langPath: path.resolve('public/tesseract/lang'), cachePath: cache });
-  const image = Buffer.from(await blob.arrayBuffer());
-  const pass = async (mode) => {
-    await worker.setParameters({ tessedit_pageseg_mode: mode, preserve_interword_spaces: '1', user_defined_dpi: '300' });
-    const result = await worker.recognize(image, { rotateAuto: true }, { text: true, blocks: true });
-    return receiptOcrText(result.data.blocks?.flatMap(block => block.paragraphs.flatMap(paragraph => paragraph.lines)) ?? []) || result.data.text;
-  };
-  const first = await pass(PSM.AUTO);
-  if (extractReceiptFields(first).amount) return first;
-  const retry = await pass(PSM.SPARSE_TEXT);
-  return receiptFieldQuality(extractReceiptFields(retry)) > receiptFieldQuality(extractReceiptFields(first)) ? retry : first;
+  return recognizeReceiptImage(worker, Buffer.from(await blob.arrayBuffer()));
 }
 try {
   for (const file of files) {

@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Worker, PSM } from "tesseract.js";
-import { extractReceiptFields, receiptFieldQuality, receiptOcrText, type ReceiptContext, type ReceiptFields } from "@/lib/receipt-ocr";
+import type { Worker } from "tesseract.js";
+import { extractReceiptFields, type ReceiptContext, type ReceiptFields } from "@/lib/receipt-ocr";
+import { recognizeReceiptImage } from "@/lib/receipt-recognition";
 import { prepareReceiptImage } from "@/lib/receipt-image";
 import { readReceiptPdf } from "@/lib/receipt-pdf";
 
@@ -52,7 +53,7 @@ export function useReceiptOcr() {
         const { createWorker } = await import("tesseract.js");
         assertActive();
         worker = await createWorker(["heb", "eng"], 1, {
-          workerPath: "/tesseract/worker.min.js", corePath: "/tesseract/tesseract-core-simd-lstm.wasm.js",
+          workerPath: "/tesseract/worker.min.js", corePath: "/tesseract",
           langPath: "/tesseract/lang", workerBlobURL: false,
           logger: (message) => { if (message.status === "recognizing text") updateProgress(message.progress); },
         });
@@ -61,20 +62,7 @@ export function useReceiptOcr() {
       }
       assertActive();
       setStatus(`סורקים ${files[currentFile].name} · ${currentFile + 1}/${files.length}`);
-      await worker!.setParameters({ tessedit_pageseg_mode: "3" as PSM, preserve_interword_spaces: "1", user_defined_dpi: "300" });
-      const first = await worker!.recognize(image, { rotateAuto: true }, { text: true, blocks: true });
-      assertActive();
-      const positionedText = (data: typeof first.data) => receiptOcrText(data.blocks?.flatMap((block) => block.paragraphs.flatMap((paragraph) => paragraph.lines)) ?? []) || data.text;
-      let text = positionedText(first.data);
-      if (!extractReceiptFields(text, context).amount) {
-        assertActive(); setStatus("בודקים את הסכום…");
-        await worker!.setParameters({ tessedit_pageseg_mode: "11" as PSM });
-        const retry = await worker!.recognize(image, { rotateAuto: true }, { text: true, blocks: true });
-        assertActive();
-        const candidate = positionedText(retry.data);
-        if (receiptFieldQuality(extractReceiptFields(candidate, context)) > receiptFieldQuality(extractReceiptFields(text, context))) text = candidate;
-      }
-      return text;
+      return recognizeReceiptImage(worker!, image, { context, assertActive, onRetry: () => setStatus("בודקים את הסכום…") });
     };
     const readPdf = async (file: File) => {
       const pdfjs = await import("pdfjs-dist");
