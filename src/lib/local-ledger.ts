@@ -1,5 +1,6 @@
 import { expenseSchema, type Expense } from "./expenses.ts";
 import type { PendingExpense } from "./offline-types.ts";
+import { ledgerFilters } from "./ledger-filters.ts";
 
 export function localLedger(expenses: Expense[], drafts: PendingExpense[]) {
   const rows = new Map(expenses.map((expense) => [expense.id, expense]));
@@ -16,9 +17,10 @@ export function localLedger(expenses: Expense[], drafts: PendingExpense[]) {
 }
 
 export function filterLocalLedger(expenses: Expense[], url: URL) {
-  const query = (url.searchParams.get("q") ?? "").trim().toLocaleLowerCase();
-  const month = url.searchParams.get("month") ?? "";
-  const category = url.pathname.startsWith("/categories/") ? url.pathname.split("/")[2] : url.searchParams.get("category") ?? "";
+  const routeCategory = url.pathname.startsWith("/categories/") ? url.pathname.split("/")[2] : "";
+  const { search, month, categoryId: category } = ledgerFilters(url.searchParams, routeCategory);
+  if (routeCategory && !category) return [];
+  const query = search.toLocaleLowerCase();
   return expenses.filter((expense) => expense.merchant.toLocaleLowerCase().includes(query) &&
     (!category || expense.category_id === category) && (!month || expense.spent_on.startsWith(month)));
 }

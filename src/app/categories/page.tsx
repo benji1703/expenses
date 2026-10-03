@@ -1,8 +1,8 @@
-import Home from "@/app/page";
+import WorkspacePage from "@/components/workspace-page";
 export const dynamic = "force-dynamic";
 
 export default function CategoriesPage(props: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  return <Home {...props} section="categories" />;
+  return <WorkspacePage {...props} section="categories" />;
 }

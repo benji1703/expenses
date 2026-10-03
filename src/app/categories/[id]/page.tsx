@@ -1,4 +1,4 @@
-import Home from "@/app/page";
+import WorkspacePage from "@/components/workspace-page";
 export const dynamic = "force-dynamic";
 
 export default async function CategoryPage(props: {
@@ -6,5 +6,5 @@ export default async function CategoryPage(props: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id } = await props.params;
-  return <Home searchParams={props.searchParams} section="category" category={id} />;
+  return <WorkspacePage searchParams={props.searchParams} section="category" category={id} />;
 }

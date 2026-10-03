@@ -1,9 +1,9 @@
-import Home from "@/app/page";
+import WorkspacePage from "@/components/workspace-page";
 
 export const dynamic = "force-dynamic";
 
 export default function HouseholdPage(props: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  return <Home {...props} section="household" />;
+  return <WorkspacePage {...props} section="household" />;
 }

@@ -5,13 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { adminClient } from "@/lib/supabase/admin";
 import { expenseSchema, receiptExtension } from "@/lib/expenses";
 import { sameExpenseFields } from "@/lib/offline-types";
+import { expenseReplaySchema } from "@/lib/expense-replay";
 
-const payloadSchema = z.object({
-  owner: z.uuid(), operation_id: z.uuid(), expense_id: z.uuid(), editing: z.boolean(),
-  expected_updated_at: z.iso.datetime({ offset: true }).nullable(),
-  fields: z.record(z.string(), z.string()),
-  files: z.array(z.object({ id: z.uuid(), path: z.string().max(200), type: z.enum(["application/pdf", "image/jpeg", "image/png"]) })).max(10),
-});
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status, headers: { "Cache-Control": "no-store" } });
 async function authorizeMember(writable = false) {
   // Revalidate identity and membership on every replay; cached access never authorizes a write.
@@ -48,7 +43,7 @@ export async function POST(request: Request) {
   const auth = await authorizeMember(true);
   if (auth instanceof Response) return auth;
   const { supabase, user, member } = auth;
-  const payload = payloadSchema.safeParse(await request.json().catch(() => null));
+  const payload = expenseReplaySchema.safeParse(await request.json().catch(() => null));
   if (!payload.success) return fail("נתוני הסנכרון אינם תקינים.", 400);
   const draft = payload.data;
   if (draft.owner !== user.sub) return fail("התחברו לחשבון ששמר את הטיוטה כדי לסנכרן.", 403);

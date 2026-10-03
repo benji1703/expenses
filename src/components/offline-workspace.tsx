@@ -11,11 +11,13 @@ import { RenovationGuide } from "@/components/guide";
 import { activeProfile, listDrafts, loadSnapshot, offlineChanged } from "@/lib/offline-store";
 import { markConnection } from "@/lib/connection-state";
 import { localNavigation, workspaceRoute } from "@/lib/workspace-navigation";
+import { withRequestTimeout } from "@/lib/request-timeout";
 import { createWorkspaceReconnect } from "@/lib/workspace-reconnect";
 import Loading from "@/app/loading";
 import type { OfflineSnapshot, PendingExpense } from "@/lib/offline-types";
 import { money } from "@/lib/expenses";
 import { filterLocalLedger, localLedger } from "@/lib/local-ledger";
+import { ledgerFilters } from "@/lib/ledger-filters";
 import { Search, Wallet } from "lucide-react";
 
 export function OfflineWorkspace({ shell = false }: { shell?: boolean }) {
@@ -31,10 +33,11 @@ export function OfflineWorkspace({ shell = false }: { shell?: boolean }) {
     const readRoute = () => {
       const url = new URL(location.href);
       const requestedPath = workspaceRoute(url.pathname) ? url.pathname : "/expenses";
+      const filters = ledgerFilters(url.searchParams, requestedPath.startsWith("/categories/") ? requestedPath.split("/")[2] : "");
       setPath(requestedPath);
-      setSearch(url.searchParams.get("q") ?? "");
-      setCategory(requestedPath.startsWith("/categories/") ? requestedPath.split("/")[2] : url.searchParams.get("category") ?? "");
-      setMonth(url.searchParams.get("month") ?? "");
+      setSearch(filters.search);
+      setCategory(filters.categoryId);
+      setMonth(filters.month);
     };
     const load = async (initial = false) => {
       try {
@@ -62,7 +65,7 @@ export function OfflineWorkspace({ shell = false }: { shell?: boolean }) {
       online: () => navigator.onLine,
       visible: () => document.visibilityState !== "hidden",
       editorOpen: () => !!document.querySelector("dialog[open]"),
-      request: () => fetch("/api/offline/expenses", { cache: "no-store", signal: AbortSignal.timeout(10_000) }),
+      request: () => withRequestTimeout((signal) => fetch("/api/offline/expenses", { cache: "no-store", signal }), 10_000),
       connected: () => markConnection(true),
       // Restore authenticated rendering at the same address once every editor
       // closes; fields and selected receipts remain mounted until then.

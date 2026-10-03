@@ -1,5 +1,7 @@
+import { withRequestTimeout } from "./request-timeout.ts";
 import { expenseSchema, receiptExtension, type Expense } from "./expenses";
 import type { OfflineProfile, PendingExpense } from "./offline-types";
+import type { ExpenseReplay } from "./expense-replay";
 import { activeProfile, cacheSyncedExpense, listDrafts, offlineChanged, putDraft, removeDraft } from "./offline-store";
 
 export async function queueExpense(form: FormData, expense?: Expense) {
@@ -39,8 +41,11 @@ export function syncDrafts(profile: OfflineProfile, onProgress?: (name: string) 
       onProgress?.(draft.fields.merchant);
       try {
         if (draft.files.length) {
-          const access = await fetch("/api/offline/expenses", { cache: "no-store", signal: AbortSignal.timeout(15_000) });
-          const identity = await access.json().catch(() => null) as { error?: string; profile?: { id: string } } | null;
+          const { access, identity } = await withRequestTimeout(async (signal) => {
+            const access = await fetch("/api/offline/expenses", { cache: "no-store", signal });
+            const identity = await access.json().catch((error) => { if (signal.aborted) throw error; return null; }) as { error?: string; profile?: { id: string } } | null;
+            return { access, identity };
+          }, 15_000);
           if (!access.ok || identity?.profile?.id !== profile.id) {
             const code = access.ok ? 403 : access.status;
             await putDraft({ ...draft, blocked: [401, 403].includes(code), error_code: code, error: identity?.error ?? "התחברו לחשבון ששמר את הטיוטה כדי לסנכרן." });
@@ -56,12 +61,15 @@ export function syncDrafts(profile: OfflineProfile, onProgress?: (name: string) 
           for (let index = 0; index < draft.files.length; index++) {
             const file = draft.files[index];
             onProgress?.(`${draft.fields.merchant} · קובץ ${index + 1}/${draft.files.length}`);
-            const uploaded = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/receipts/${file.path}`, {
-              method: "POST", body: file.blob, signal: AbortSignal.timeout(90_000),
-              headers: { "Content-Type": file.type, apikey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, Authorization: `Bearer ${session.session.access_token}`, "x-upsert": "false" },
-            });
+            const { uploaded, failure } = await withRequestTimeout(async (signal) => {
+              const uploaded = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/receipts/${file.path}`, {
+                method: "POST", body: file.blob, signal,
+                headers: { "Content-Type": file.type, apikey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, Authorization: `Bearer ${session.session!.access_token}`, "x-upsert": "false" },
+              });
+              const failure = uploaded.ok ? null : await uploaded.json().catch((error) => { if (signal.aborted) throw error; return null; }) as { message?: string; error?: string; statusCode?: string } | null;
+              return { uploaded, failure };
+            }, 90_000);
             if (!uploaded.ok) {
-              const failure = await uploaded.json().catch(() => null) as { message?: string; error?: string; statusCode?: string } | null;
               const authCode = [401, 403].includes(uploaded.status) ? uploaded.status : Number(failure?.statusCode);
               if ([401, 403].includes(authCode)) {
                 const error = authCode === 401
@@ -75,16 +83,15 @@ export function syncDrafts(profile: OfflineProfile, onProgress?: (name: string) 
           }
           onProgress?.(draft.fields.merchant);
         }
-        const controller = new AbortController();
-        const timeout = window.setTimeout(() => controller.abort(), 30_000);
-        let response: Response;
-        try {
-          response = await fetch("/api/offline/expenses", { method: "POST", headers: { "Content-Type": "application/json" },
+        const { response, result } = await withRequestTimeout(async (signal) => {
+          const response = await fetch("/api/offline/expenses", { method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ owner: draft.owner, operation_id: draft.operation_id, expense_id: draft.expense_id, editing: draft.editing,
-              expected_updated_at: draft.expected_updated_at, fields: draft.fields, files: draft.files.map(({ id, path, type }) => ({ id, path, type })) }),
-            signal: controller.signal, cache: "no-store" });
-        } finally { window.clearTimeout(timeout); }
-        const result = await response.json().catch(() => null) as { error?: string; expense?: Expense } | null;
+              expected_updated_at: draft.expected_updated_at, fields: draft.fields,
+              files: draft.files.map(({ id, path, type }) => ({ id, path, type: type as ExpenseReplay["files"][number]["type"] })) } satisfies ExpenseReplay),
+            signal, cache: "no-store" });
+          const result = await response.json().catch((error) => { if (signal.aborted) throw error; return null; }) as { error?: string; expense?: Expense } | null;
+          return { response, result };
+        }, 30_000);
         if (!response.ok || !result?.expense) {
           const blocked = [400, 401, 403, 409].includes(response.status);
           await putDraft({ ...draft, blocked, error_code: response.status, error: result?.error ?? "הסנכרון לא הושלם. הטיוטה נשארה במכשיר." });

@@ -6,6 +6,7 @@ import test from "node:test";
 import ts from "typescript";
 import { expenseSchema, receiptExtension } from "../src/lib/expenses.ts";
 import { sameExpenseFields } from "../src/lib/offline-types.ts";
+import { expenseReplaySchema } from "../src/lib/expense-replay.ts";
 
 const require = createRequire(import.meta.url);
 const owner = "aaaaaaaa-aaaa-4aaa-baaa-aaaaaaaaaaaa";
@@ -62,6 +63,7 @@ function setup() {
     if (name === "@/lib/supabase/admin") return { adminClient: () => ({ storage: { from: () => ({ download: async () => { state.downloads++; return { data: new Blob([state.validFile ? new Uint8Array([137,80,78,71,13,10,26,10]) : "not an image"]), error: null }; } }) } }) };
     if (name === "@/lib/expenses") return { expenseSchema, receiptExtension };
     if (name === "@/lib/offline-types") return { sameExpenseFields };
+    if (name === "@/lib/expense-replay") return { expenseReplaySchema };
     if (name === "next/cache") return { revalidatePath: () => {} };
     return require(name);
   };
@@ -115,6 +117,17 @@ test("foreign attachment paths and invalid image signatures are rejected", async
   s.state.validFile = false;
   assert.equal((await s.post()).status, 400);
   assert.equal(s.expenses.size, 0);
+});
+test("duplicate attachments and invalid replay values are rejected before uploads or writes", async () => {
+  const s = setup();
+  for (const payload of [
+    { ...s.payload, files: [s.payload.files[0], s.payload.files[0]] },
+    { ...s.payload, operation_id: "not-a-uuid" },
+    { ...s.payload, fields: { ...fields, due_on: "2026-02-30" } },
+    { ...s.payload, fields: { ...fields, amount: "1,180.00" } },
+    { ...s.payload, fields: { ...fields, notes: "x".repeat(2001) } },
+  ]) assert.equal((await s.post(payload)).status, 400);
+  assert.equal(s.state.downloads, 0); assert.equal(s.state.mutations, 0);
 });
 test("optimistic version check rejects an edit racing with another device", async () => {
   const s = setup(); await s.post(); s.state.race = true;

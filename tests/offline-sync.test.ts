@@ -8,6 +8,7 @@ import test from "node:test";
 import * as store from "../src/lib/offline-store.ts";
 import { expenseSchema, receiptExtension } from "../src/lib/expenses.ts";
 import type { OfflineProfile } from "../src/lib/offline-types.ts";
+import { withRequestTimeout } from "../src/lib/request-timeout.ts";
 
 const require = createRequire(import.meta.url);
 const profile: OfflineProfile = { id: "aaaaaaaa-aaaa-4aaa-baaa-aaaaaaaaaaaa", email: "test@example.com", role: "admin" };
@@ -27,11 +28,16 @@ test("offline save, lost acknowledgement, storage auth failures and reconnect pr
   await store.saveSnapshot({ profile, categories: [], expenses: [], saved_at: "2026-10-02T10:00:00Z" });
   const realFetch = globalThis.fetch;
   const committed = new Map<string, unknown>(), uploads = new Set<string>();
-  let loseAck = true, uploadAuthError = 0;
+  let loseAck = true, uploadAuthError = 0, stallAccess = false;
   globalThis.fetch = async (input, init) => {
     const url = String(input);
     if (!network.onLine) throw new TypeError("offline");
-    if (url === "/api/offline/expenses" && !init?.method) return Response.json({ profile });
+    if (url === "/api/offline/expenses" && !init?.method) {
+      if (stallAccess) return new Response(new ReadableStream({ start(controller) {
+        init?.signal?.addEventListener("abort", () => controller.error(new DOMException("timed out", "AbortError")), { once: true });
+      } }), { headers: { "Content-Type": "application/json" } });
+      return Response.json({ profile });
+    }
     if (url.includes("/storage/v1/object/receipts/")) {
       if (uploadAuthError) return Response.json({ statusCode: String(uploadAuthError) }, { status: uploadAuthError });
       assert.ok(init?.body instanceof Blob);
@@ -52,6 +58,7 @@ test("offline save, lost acknowledgement, storage auth failures and reconnect pr
   const localRequire = (name: string): unknown => {
     if (name === "./expenses") return { expenseSchema, receiptExtension };
     if (name === "./offline-store") return store;
+    if (name === "./request-timeout.ts") return { withRequestTimeout: <T>(operation: (signal: AbortSignal) => Promise<T>) => withRequestTimeout(operation, 50) };
     if (name === "./supabase/browser") return { createClient: () => ({ auth: { getSession: async () => ({ data: { session: { access_token: "test-token" } }, error: null }) } }) };
     return require(name);
   };
@@ -63,6 +70,11 @@ test("offline save, lost acknowledgement, storage auth failures and reconnect pr
     assert.equal((await loadedModule.exports.syncDrafts(profile)).connected, false);
     assert.equal((await store.listDrafts(profile.id)).length, 1);
     network.onLine = true;
+    stallAccess = true;
+    assert.equal((await loadedModule.exports.syncDrafts(profile)).connected, false);
+    assert.equal((await store.listDrafts(profile.id))[0].blocked, undefined, "a response-body timeout must remain retryable, not revoke access");
+    assert.equal(uploads.size, 0);
+    stallAccess = false;
     assert.equal((await loadedModule.exports.syncDrafts(profile)).connected, false); // server committed, response lost
     assert.equal((await store.listDrafts(profile.id)).length, 1);
     assert.equal(committed.size, 1); assert.equal(uploads.size, 1);
