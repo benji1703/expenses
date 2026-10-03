@@ -105,3 +105,23 @@ test("payment instructions and municipal numbered notices cannot become totals",
     assert.equal(extractReceiptFields(text).amount, undefined);
   }
 });
+
+test("a PDF issuer and tax ID in parallel columns fill the supplier and business header, excluding customer details", async () => {
+  const items = [
+    item('אור ספורט בע״מ', 450, 802, 120, 14), item('עוסק מורשה 512345678', 30, 802, 130, 14),
+    item('המלאכה 25, רעננה 43345', 435, 787, 135, 14), item('0501234567 :טלפון', 470, 772, 100, 14),
+    item('חשבונית מס קבלה', 450, 670, 120, 14), item('לכבוד:', 520, 642, 50, 14),
+    item('חברת הלקוח בע״מ', 450, 626, 120, 14), item('עוסק מורשה 599999999', 30, 626, 130, 14),
+    item('רחוב הלקוח 10, תל אביב', 435, 610, 135, 14), item('טלפון: 0509999999', 450, 594, 120, 14),
+    item('סה״כ לתשלום 380.00 ₪', 240, 550, 150, 14),
+  ];
+  const pdf = { numPages: 1, getPage: async () => ({ getTextContent: async () => ({ items }), cleanup: () => {} }) } as unknown as PDFDocumentProxy;
+  const text = await readReceiptPdf(pdf, { context: {}, render: async () => assert.fail('readable header needs no raster'), recognize: async () => assert.fail('readable header needs no OCR') });
+  const fields = extractReceiptFields(text);
+  assert.equal(fields.merchant, 'אור ספורט בע"מ');
+  assert.equal(fields.notes, 'אור ספורט בע"מ\nהמלאכה 25, רעננה 43345\nטלפון: 0501234567\nעוסק מורשה 512345678');
+  assert.equal(fields.amount, '380.00');
+  assert.equal(fields.document_type, 'tax_receipt');
+  assert.equal(fields.payment_status, 'paid');
+  assert.deepEqual(fields.merchant_candidates, ['אור ספורט בע"מ']);
+});

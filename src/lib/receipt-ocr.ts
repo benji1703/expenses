@@ -161,6 +161,56 @@ function editDistance(a: string, b: string) {
   }
   return previous[b.length];
 }
+
+function splitBusinessRegistration(line: string) {
+  const label = '(?:עוסק\\s*(?:מורשה|פטור)|ח["\'.]?\\s*פ|ע["\'.]\\s*מ)';
+  const match = line.match(new RegExp(`(${label})\\s*[:#.-]?\\s*(\\d{9})(?!\\d)|\\b(\\d{9})(?!\\d)\\s*[:#.-]?\\s*(${label})`));
+  if (!match) return { text: line };
+  return {
+    text: line.replace(match[0], "").replace(/^[\s|:;-]+|[\s|:;-]+$/g, ""),
+    registration: `${match[1] ?? match[4]} ${match[2] ?? match[3]}`,
+  };
+}
+
+/** Only the issuer's business block belongs in notes, never customer details or line items. */
+function businessHeader(lines: string[], merchant?: string) {
+  if (!merchant) return;
+  const compact = (value: string) => words(value.replace(/^(?:שם\s*(?:העסק|הספק)|ספק|מאת|merchant|supplier)\s*[:\-]\s*/i, "")).replace(/בעמ$/, "").replace(/\s/g, "");
+  const matchesIssuer = (value: string) => {
+    const name = compact(value), target = compact(merchant);
+    return name === target || name.length >= 7 && Math.abs(name.length - target.length) <= 2 && editDistance(name, target) <= 2;
+  };
+  const header: ReturnType<typeof splitBusinessRegistration>[] = [];
+  for (const line of lines.slice(0, 14)) {
+    if (/(?:^|\s)(?:לכבוד|לקוח|שם\s*הלקוח|bill\s*to|customer)(?:\s|:|$)/i.test(line)) break;
+    const row = splitBusinessRegistration(line);
+    // A document title after the issuer block ends that block.
+    if (header.some((item) => matchesIssuer(item.text))
+      && /^(?:חשבונית|קבלה|דרישת\s*תשלום|הצעת\s*מחיר|invoice\b|receipt\b)/i.test(row.text)) break;
+    header.push(row);
+  }
+  const registrations = [...new Set(header.flatMap((row) => row.registration ? [row.registration] : []))];
+  if (registrations.length !== 1) return;
+  const nameIndex = header.findIndex((row) => matchesIssuer(row.text));
+  if (nameIndex < 0) return;
+  const details: string[] = [];
+  for (const { text } of header.slice(nameIndex + 1)) {
+    if (!text) continue;
+    const phone = text.match(/^(טלפון|טל\.?|נייד|פקס)\s*:?\s*([+\d][\d()\-\s]{5,24})$/);
+    const reversedPhone = text.match(/^([+\d][\d()\-\s]{5,24})\s*:\s*(טלפון|טל\.?|נייד|פקס)$/);
+    if (phone || reversedPhone) {
+      details.push(phone ? `${phone[1]}: ${phone[2].trim()}` : `${reversedPhone![2]}: ${reversedPhone![1].trim()}`);
+      continue;
+    }
+    if (identifiers.test(text) || totalScore(text) || nonTotal.test(text)) continue;
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$|^(?:https?:\/\/|www\.)\S+$/i.test(text)) { details.push(text); continue; }
+    if (/[א-ת]/.test(text) && /(?:^|\s)\d{1,5}(?=\s|,|$)/.test(text)
+      && !currencyPattern.test(text) && !/תאריך|מספר|שעה|עמוד|חשבונית|קבלה|\d+[/.\-]\d+/i.test(text)) details.push(text);
+  }
+  const notes = [merchant, ...new Set(details), registrations[0]].join("\n");
+  return notes.length <= 2000 ? notes : undefined;
+}
+
 function merchantName(lines: string[], known: string[]) {
   const explicit = /^(?:שם\s*(?:העסק|הספק)|ספק|מאת|merchant|supplier)\s*[:\-]\s*(.+)$/i;
   const excluded = /^(?:חשבונית|קבלה|דרישת\s*תשלום|הצעת\s*מחיר|חשבון(?:\s|דו|חשמל|עסקה)|עמוד|page\b|העתק|מקור|תאריך|לכבוד|לקוח|שם\s*הלקוח|כתובת|רחוב|טלפון|נייד|דוא["']?ל|מספר|תיאור|סה["']?כ|סכום|מע["']?מ|מס\s*ערך|מסמך|signature|date|receipt|invoice|electricity\s*bill|bill\s*to|customer|total)/i;
@@ -172,7 +222,7 @@ function merchantName(lines: string[], known: string[]) {
   if (municipalSupplier) return { merchant: municipalSupplier, candidates: [municipalSupplier] };
   const electricEvidence = /\biec\.co\.il\b|קוט["']?ש|חשבון\s*חשמל/i.test(fullText);
   for (let index = 0; index < Math.min(lines.length, 12); index++) {
-    const line = lines[index];
+    const line = splitBusinessRegistration(lines[index]).text;
     // PDF rows can join issuer details with the customer column's label.
     if (/(?:^|\s)(?:לכבוד|לקוח|שם\s*הלקוח|bill\s*to|customer)(?:\s|:|$)/i.test(line)) break;
     const labelled = line.match(explicit);
@@ -313,6 +363,7 @@ export function extractReceiptFields(text: string, context: ReceiptContext = {})
   if (!merchant) warnings.push("שם הספק לא זוהה. מלאו אותו לפי המסמך.");
   return {
     merchant, amount: amount.amount, amount_source: amount.source,
+    notes: businessHeader(lines, merchant),
     currency: amount.currency ?? currency(normalized) ?? (merchant === "עיריית רעננה" ? "ILS" : undefined), ...dates(lines), reference,
     document_type: type,
     payment_status: conditionalReceipt && (type === "receipt" || type === "tax_receipt") ? "unpaid" : type === "receipt" || type === "tax_receipt" ? "paid" : type === "payment_request" ? "unpaid" : type === "quote" ? "planned" : undefined,

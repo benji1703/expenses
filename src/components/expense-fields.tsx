@@ -63,12 +63,12 @@ export default function ExpenseFields({ categories, merchants = [], expense, can
     const values: Record<string, string> = {};
     for (const name of receiptFormFields) {
       const element = formRef.current?.elements.namedItem(name);
-      if (element instanceof HTMLInputElement || element instanceof HTMLSelectElement) values[name] = element.value;
+      if (element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement) values[name] = element.value;
     }
     const updates = receiptAutofill(fields, values, lastApplied.current, explicit ? new Set() : edited.current);
     for (const [name, value] of Object.entries(updates)) {
       const element = formRef.current?.elements.namedItem(name);
-      if (element instanceof HTMLInputElement || element instanceof HTMLSelectElement) element.value = value;
+      if (element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement) element.value = value;
     }
     lastApplied.current = { ...lastApplied.current, ...updates };
     if (Object.keys(updates).length) onDirty?.();

@@ -1,11 +1,12 @@
 import type { ReceiptFields } from "./receipt-ocr.ts";
 
-export const receiptFormFields = ["merchant", "amount", "spent_on", "currency", "category_id", "payment_status", "due_on", "reference"] as const;
+export const receiptFormFields = ["merchant", "amount", "spent_on", "currency", "category_id", "payment_status", "due_on", "reference", "notes"] as const;
 
 export function receiptAutofill(fields: ReceiptFields, values: Record<string, string>, previous: Record<string, string>, edited: Set<string>) {
   const updates: Record<string, string> = {};
   for (const name of receiptFormFields) {
     if (edited.has(name)) continue;
+    if (name === "notes" && values.notes && values.notes !== previous.notes) continue;
     const value = fields[name];
     if (value) updates[name] = value;
     else if (name === "payment_status") updates[name] = "";
